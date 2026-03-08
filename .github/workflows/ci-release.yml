@@ -54,8 +54,10 @@ jobs:
 
       # Build tcl2emf (Windows only) - 32-bit build
       - name: Build tcl2emf (Windows)
+        shell: cmd
         run: |
-          cmd.exe /c "call ^"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars32.bat^" && cl.exe /EHsc /MD tcl2emf.cpp /Fe:tcl2emf.exe gdi32.lib user32.lib winspool.lib"
+          call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars32.bat"
+          cl.exe /EHsc /MD tcl2emf.cpp /Fe:tcl2emf.exe gdi32.lib user32.lib winspool.lib
 
       # Create platform-specific artifact package
       - name: Package Artifacts
