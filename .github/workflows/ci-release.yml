@@ -15,8 +15,8 @@ jobs:
       matrix:
         include:
           # Linux/macOS builds for server and client
-          - os: ubuntu-latest
-            goos: linux
+          - os: windows-latest
+            goos: windows
             goarch: amd64
 
     steps:
@@ -34,7 +34,6 @@ jobs:
 
       # Windows-specific: Set up MSVC for tcl2emf.cpp
       - name: Set up MSVC (Windows)
-        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
       # Build server
@@ -43,7 +42,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          go build -v -o marinvent-server${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/server
+          go build -v -o marinvent-server.exe ./cmd/server
 
       # Build client
       - name: Build Client
@@ -51,11 +50,10 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          go build -v -o marinvent-cli${{ runner.os == 'Windows' && '.exe' || '' }} ./cmd/cli
+          go build -v -o marinvent-cli.exe ./cmd/cli
 
       # Build tcl2emf (Windows only)
       - name: Build tcl2emf (Windows)
-        if: runner.os == 'Windows'
         run: |
           cl.exe /EHsc /MD tcl2emf.cpp /Fe:tcl2emf.exe gdi32.lib user32.lib winspool.lib
           if not exist tcl2emf.exe (
@@ -73,12 +71,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p build-artifacts
-
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            # Windows package
-            cp marinvent-server.exe marinvent-cli.exe tcl2emf.exe pdf_fixup_threshold.py jdmtool/* build-artifacts/
-            cd build-artifacts
-            7z a -tzip ../marinvent-windows-${{ matrix.goarch }}.zip *
+          cp marinvent-server.exe marinvent-cli.exe tcl2emf.exe pdf_fixup_threshold.py jdmtool/* build-artifacts/
+          cd build-artifacts
+          7z a -tzip ../marinvent-windows-${{ matrix.goarch }}.zip *
 
       # Upload artifacts to workflow artifacts
       - name: Upload Artifacts
