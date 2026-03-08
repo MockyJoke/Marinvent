@@ -1,7 +1,11 @@
 package api
 
 import (
+	"fmt"
+	"log"
 	"net/http"
+	"strings"
+	"time"
 
 	"marinvent/internal/charts"
 
@@ -90,11 +94,15 @@ func NewHandler(catalog *charts.Catalog, config *Config) *Handler {
 // @Success 200 {object} ChartList
 // @Router /api/v1/charts/{icao} [get]
 func (h *Handler) GetCharts(c *gin.Context) {
+	start := time.Now()
+
 	icao := c.Param("icao")
 	typeQuery := c.Query("type")
 	search := c.Query("search")
 
+	t := time.Now()
 	results := h.catalog.Filter(icao, typeQuery, search)
+	filterTime := time.Since(t)
 
 	chartList := make([]ChartInfo, 0, len(results))
 	for _, r := range results {
@@ -116,6 +124,9 @@ func (h *Handler) GetCharts(c *gin.Context) {
 		Total:  len(chartList),
 		Charts: chartList,
 	})
+
+	log.Printf("[PERF] GetCharts(%s): filter=%.1fms total=%.1fms results=%d",
+		icao, float64(filterTime.Microseconds())/1000, float64(time.Since(start).Microseconds())/1000, len(chartList))
 }
 
 // GetChartTypes returns all available chart types
@@ -157,11 +168,24 @@ func (h *Handler) GetChartTypes(c *gin.Context) {
 // @Success 200 {file} pdf "PDF file containing the chart"
 // @Router /api/v1/charts/{icao}/export/{filename} [get]
 func (h *Handler) GetChartPDF(c *gin.Context) {
+	start := time.Now()
+	timings := make(map[string]time.Duration)
+	tick := func(name string, t time.Time) time.Duration {
+		d := time.Since(t)
+		timings[name] = d
+		return d
+	}
+
+	t := time.Now()
 	icao := c.Param("icao")
 	filename := c.Param("filename")
 	noPostProcess := c.Query("no_postprocess") == "1"
+	tick("params", t)
 
+	t = time.Now()
 	chart := h.catalog.GetChart(filename)
+	tick("GetChart", t)
+
 	if chart == nil || chart.ICAO != icao {
 		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
 		return
@@ -172,14 +196,36 @@ func (h *Handler) GetChartPDF(c *gin.Context) {
 		return
 	}
 
+	t = time.Now()
 	pdfBytes, err := h.catalog.ExportToPDF(chart.TCLPath, !noPostProcess)
+	tick("ExportToPDF", t)
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	t = time.Now()
 	c.Header("Content-Disposition", "attachment; filename="+filename+".pdf")
 	c.Data(http.StatusOK, "application/pdf", pdfBytes)
+	tick("response", t)
+
+	timings["total"] = time.Since(start)
+
+	logTimings(timings, filename)
+}
+
+func logTimings(timings map[string]time.Duration, filename string) {
+	total := timings["total"]
+	delete(timings, "total")
+
+	parts := make([]string, 0, len(timings)+1)
+	for name, d := range timings {
+		parts = append(parts, fmt.Sprintf("%s=%.1fms", name, float64(d.Microseconds())/1000))
+	}
+	parts = append(parts, fmt.Sprintf("total=%.1fms", float64(total.Microseconds())/1000))
+
+	log.Printf("[PERF] %s: %s", filename, strings.Join(parts, " "))
 }
 
 // GetHealth returns health check

@@ -13,6 +13,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+static LARGE_INTEGER gFreq;
+static LARGE_INTEGER gLastTime;
+
+static void TimerInit(void) {
+    QueryPerformanceFrequency(&gFreq);
+    QueryPerformanceCounter(&gLastTime);
+}
+
+static double TimerTick(const char* label) {
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    double ms = (double)(now.QuadPart - gLastTime.QuadPart) * 1000.0 / gFreq.QuadPart;
+    gLastTime = now;
+    if (label) printf("[%8.2f ms] %s\n", ms, label);
+    return ms;
+}
+
 #define JEPPVIEW_PATH "C:\\Program Files (x86)\\Jeppesen\\JeppView for Windows"
 #define JEPPESEN_FONTS_PATH "C:\\ProgramData\\Jeppesen\\Common\\Fonts"
 
@@ -113,16 +130,12 @@ static int LoadJeppesenFonts(const char* fontDir) {
         do {
             char fontPath[MAX_PATH];
             snprintf(fontPath, MAX_PATH, "%s\\%s", fontDir, findData.cFileName);
-            int result = AddFontResourceA(fontPath);
-            if (result > 0) {
+            if (AddFontResourceExA(fontPath, FR_PRIVATE, 0) > 0) {
                 if (gNumLoadedFonts < 100) {
                     strncpy(gLoadedFonts[gNumLoadedFonts], fontPath, MAX_PATH - 1);
                     gNumLoadedFonts++;
                 }
                 loaded++;
-                printf("  Loaded: %s\n", findData.cFileName);
-            } else {
-                printf("  Failed: %s (error %lu)\n", findData.cFileName, GetLastError());
             }
         } while (FindNextFileA(hFind, &findData));
         FindClose(hFind);
@@ -134,23 +147,15 @@ static int LoadJeppesenFonts(const char* fontDir) {
         do {
             char fontPath[MAX_PATH];
             snprintf(fontPath, MAX_PATH, "%s\\%s", fontDir, findData.cFileName);
-            int result = AddFontResourceA(fontPath);
-            if (result > 0) {
+            if (AddFontResourceExA(fontPath, FR_PRIVATE, 0) > 0) {
                 if (gNumLoadedFonts < 100) {
                     strncpy(gLoadedFonts[gNumLoadedFonts], fontPath, MAX_PATH - 1);
                     gNumLoadedFonts++;
                 }
                 loaded++;
-                printf("  Loaded: %s\n", findData.cFileName);
-            } else {
-                printf("  Failed: %s (error %lu)\n", findData.cFileName, GetLastError());
             }
         } while (FindNextFileA(hFind, &findData));
         FindClose(hFind);
-    }
-    
-    if (loaded > 0) {
-        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
     }
     
     return loaded;
@@ -158,10 +163,7 @@ static int LoadJeppesenFonts(const char* fontDir) {
 
 static void UnloadJeppesenFonts(void) {
     for (int i = 0; i < gNumLoadedFonts; i++) {
-        RemoveFontResourceA(gLoadedFonts[i]);
-    }
-    if (gNumLoadedFonts > 0) {
-        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+        RemoveFontResourceExA(gLoadedFonts[i], FR_PRIVATE, 0);
     }
     gNumLoadedFonts = 0;
 }
@@ -187,10 +189,17 @@ static int InitTCLLib(void) {
     }
     
     int fontsLoaded = LoadJeppesenFonts(fontDir);
-    printf("Loaded %d Jeppesen fonts from: %s\n", fontsLoaded, fontDir);
+    char label[64];
+    snprintf(label, sizeof(label), "LoadJeppesenFonts (%d fonts)", fontsLoaded);
+    TimerTick(label);
     
     MF_LibOpen();
-    return TCL_LibInit((int)fontPath, (int)lineStylePath, (int)tclClassPath, NULL) == 1;
+    TimerTick("MF_LibOpen");
+    
+    int result = TCL_LibInit((int)fontPath, (int)lineStylePath, (int)tclClassPath, NULL) == 1;
+    TimerTick("TCL_LibInit");
+    
+    return result;
 }
 
 static int IsPDFFile(const char* filename) {
@@ -290,6 +299,7 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
         fprintf(stderr, "Failed to get picture count\n");
         return -1;
     }
+    TimerTick("TCL_GetNumPictsInFile");
     
     if (pictIndex < 1 || pictIndex > (int)numPicts) {
         fprintf(stderr, "Invalid picture index: %d (valid: 1-%u)\n", pictIndex, numPicts);
@@ -307,6 +317,7 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
         fprintf(stderr, "TCL_Open failed: %d\n", result);
         return -1;
     }
+    TimerTick("TCL_Open");
     
     __try {
         result = TCL_GetPictRect(pictHandle, &pictRect);
@@ -321,6 +332,7 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
         TCL_ClosePict(pictHandle);
         return -1;
     }
+    TimerTick("TCL_GetPictRect");
     
     int width = pictRect.right - pictRect.left;
     int height = pictRect.bottom - pictRect.top;
@@ -331,6 +343,7 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
         TCL_ClosePict(pictHandle);
         return -1;
     }
+    TimerTick("CreatePDFPrinterDC");
     
     int dpi = GetDeviceCaps(hdcPrinter, LOGPIXELSX);
     int pageWidth = GetDeviceCaps(hdcPrinter, HORZRES);
@@ -359,6 +372,7 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
         TCL_ClosePict(pictHandle);
         return -1;
     }
+    TimerTick("StartDoc");
     
     if (StartPage(hdcPrinter) <= 0) {
         fprintf(stderr, "StartPage failed\n");
@@ -367,6 +381,7 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
         TCL_ClosePict(pictHandle);
         return -1;
     }
+    TimerTick("StartPage");
     
     SetMapMode(hdcPrinter, MM_ANISOTROPIC);
     SetWindowExtEx(hdcPrinter, width, height, NULL);
@@ -374,14 +389,25 @@ static int ExportToPDF(const char* tclFile, const char* pdfFile, int pictIndex) 
     SetViewportOrgEx(hdcPrinter, offsetX, offsetY, NULL);
     
     MF_BeginPainting(hdcPrinter);
+    TimerTick("MF_BeginPainting");
+    
     result = TCL_Display(pictHandle, hdcPrinter, 1.0f, 1.0f, NULL, NULL, 0xFFFF);
+    TimerTick("TCL_Display");
+    
     MF_EndPainting(hdcPrinter);
+    TimerTick("MF_EndPainting");
     
     EndPage(hdcPrinter);
+    TimerTick("EndPage");
+    
     EndDoc(hdcPrinter);
+    TimerTick("EndDoc");
     
     DeleteDC(hdcPrinter);
+    TimerTick("DeleteDC");
+    
     TCL_ClosePict(pictHandle);
+    TimerTick("TCL_ClosePict");
     
     printf("PDF created: %s\n", pdfFile);
     return (result == 1) ? 0 : -1;
@@ -402,6 +428,7 @@ static int ExportToEMF(const char* tclFile, const char* emfFile, int pictIndex) 
         fprintf(stderr, "Failed to get picture count\n");
         return -1;
     }
+    TimerTick("TCL_GetNumPictsInFile");
     
     if (pictIndex < 1 || pictIndex > (int)numPicts) {
         fprintf(stderr, "Invalid picture index: %d (valid: 1-%u)\n", pictIndex, numPicts);
@@ -419,6 +446,7 @@ static int ExportToEMF(const char* tclFile, const char* emfFile, int pictIndex) 
         fprintf(stderr, "TCL_Open failed: %d\n", result);
         return -1;
     }
+    TimerTick("TCL_Open");
     
     __try {
         result = TCL_GetPictRect(pictHandle, &pictRect);
@@ -433,6 +461,7 @@ static int ExportToEMF(const char* tclFile, const char* emfFile, int pictIndex) 
         TCL_ClosePict(pictHandle);
         return -1;
     }
+    TimerTick("TCL_GetPictRect");
     
     int width = pictRect.right - pictRect.left;
     int height = pictRect.bottom - pictRect.top;
@@ -445,24 +474,35 @@ static int ExportToEMF(const char* tclFile, const char* emfFile, int pictIndex) 
         TCL_ClosePict(pictHandle);
         return -1;
     }
+    TimerTick("CreateEnhMetaFile");
     
     SetMapMode(hdcMeta, MM_ANISOTROPIC);
     SetWindowExtEx(hdcMeta, width, height, NULL);
     SetViewportExtEx(hdcMeta, width, height, NULL);
     
     MF_BeginPainting(hdcMeta);
+    TimerTick("MF_BeginPainting");
+    
     result = TCL_Display(pictHandle, hdcMeta, 1.0f, 1.0f, NULL, NULL, 0xFFFF);
+    TimerTick("TCL_Display");
+    
     MF_EndPainting(hdcMeta);
+    TimerTick("MF_EndPainting");
     
     hEmf = CloseEnhMetaFile(hdcMeta);
+    TimerTick("CloseEnhMetaFile");
+    
     if (hEmf) {
         DeleteEnhMetaFile(hEmf);
+        TimerTick("DeleteEnhMetaFile");
         printf("EMF created: %s\n", emfFile);
     } else {
         fprintf(stderr, "CloseEnhMetaFile failed\n");
     }
     
     TCL_ClosePict(pictHandle);
+    TimerTick("TCL_ClosePict");
+    
     return (result == 1) ? 0 : -1;
 }
 
@@ -502,10 +542,14 @@ int main(int argc, char* argv[]) {
     }
     fclose(f);
     
+    printf("=== Performance Timing ===\n");
+    TimerInit();
+    
     if (!LoadDLLs()) {
         fprintf(stderr, "Failed to load DLLs\n");
         return 1;
     }
+    TimerTick("LoadDLLs");
     
     if (!InitTCLLib()) {
         fprintf(stderr, "TCL_LibInit failed\n");
@@ -513,6 +557,7 @@ int main(int argc, char* argv[]) {
         UnloadDLLs();
         return 1;
     }
+    TimerTick("InitTCLLib (fonts + MF_LibOpen + TCL_LibInit)");
     
     int result;
     if (IsPDFFile(outFile)) {
@@ -522,8 +567,14 @@ int main(int argc, char* argv[]) {
     }
     
     TCL_LibClose();
-    UnloadJeppesenFonts();
-    UnloadDLLs();
+    TimerTick("TCL_LibClose");
     
+    UnloadJeppesenFonts();
+    TimerTick("UnloadJeppesenFonts");
+    
+    UnloadDLLs();
+    TimerTick("UnloadDLLs");
+    
+    printf("\n=== Done ===\n");
     return result;
 }
