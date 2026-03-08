@@ -9,9 +9,9 @@ Reverse engineer the Marinvent tcl .dll libraries and write a program that can l
 - **Terminal.dll** (port 8195): Application layer using mrvtcl.dll
 
 ## Ghidra Instances
-- mrvtcl.dll: `localhost:8193`
+- mrvtcl.dll: `localhost:8195`
 - mrvdrv.dll: `localhost:8194`
-- Terminal.dll: `localhost:8195`
+- Terminal.dll: `localhost:8193`
 
 ## Ghidra HTTP API Usage
 Use `ghydra` CLI or direct HTTP requests to interact with Ghidra.
@@ -145,39 +145,61 @@ To print a TCL file to a printer or export as EMF/PDF:
 - [x] Analyze Terminal.dll for reference usage
 - [x] Understand TCL file format (partial)
 - [x] Create 32-bit test program (tcl2emf.exe)
-- [ ] Debug TCL_Open error -28 (file parsing issue)
-- [ ] Implement printer export functionality
-- [ ] Test with sample TCL files
+- [x] Fix font loading for proper chart rendering
+- [x] Test with sample TCL files (LIRZ111.tcl, ELLX114.tcl)
+- [x] Verify PDF/EMF output with correct fonts
+
+## Font Loading (Critical for Proper Rendering)
+
+### Problem
+PDFs exported with Times New Roman instead of Jeppesen fonts because the fonts
+weren't loaded into the Windows GDI font table before rendering.
+
+### Solution ✓ VERIFIED
+Load Jeppesen fonts using `AddFontResourceA()` before rendering:
+
+```c
+// Font location: C:\ProgramData\Jeppesen\Common\Fonts\
+// Load all .jtf and .ttf files
+AddFontResourceA("C:\\ProgramData\\Jeppesen\\Common\\Fonts\\JEPPESEN.TTF");
+AddFontResourceA("C:\\ProgramData\\Jeppesen\\Common\\Fonts\\FONT11.JTF");
+// ... etc for all font files
+```
+
+### Font Files
+- **Location**: `C:\ProgramData\Jeppesen\Common\Fonts\`
+- **JTF files**: Jeppesen TrueType Fonts (45 fonts total)
+  - These are standard TTF files with .jtf extension
+  - Magic bytes: `00 01 00 00` (TrueType signature)
+- **TTF files**: JEPPESEN.TTF, JeppHeaderFont.ttf, wXstation.ttf
+- **TFL file**: jeppesen.tfl - Font definition list (maps font IDs to names)
+- **TLS file**: jeppesen.tls - Line style definitions
+
+### Implementation in tcl2emf.cpp
+- `LoadJeppesenFonts()` - Loads all .jtf/.ttf files from font directory
+- `UnloadJeppesenFonts()` - Cleanup with RemoveFontResourceA
+- Called before TCL_LibInit, unloaded at program exit
+- Broadcasts WM_FONTCHANGE after loading
+
+### Fallback Paths
+The program looks for resources in this order:
+1. **Local directory** (current working directory)
+2. **Jeppesen installation paths**:
+   - DLLs: `C:\Program Files (x86)\Jeppesen\JeppView for Windows\`
+   - Fonts/config: `C:\ProgramData\Jeppesen\Common\Fonts\`
+
+TCL chart files must be provided manually (no fallback - typically extracted from installation).
+
+### Test Results
+- LIRZ111.tcl → LIRZ111.pdf ✓
+- ELLX114.tcl → ELLX114.pdf ✓
+- Fonts render correctly with Jeppesen typefaces
 
 ## Current Issue
-TCL_GetNumPictsInFile works correctly and returns the picture count.
-However, TCL_Open fails with error code -28 (0xFFFFFFE4) when trying to open a picture.
+~Resolved: Font loading was the key to proper rendering.~
+~Resolved: Font loading was the key to proper rendering.~
 
-Possible causes:
-- Missing font resource file
-- Picture parsing error
-- Checksum verification issue
-- Exception in record type handler (FUN_100071a0)
-- Need to investigate exception handling in FUN_100046b0/FUN_10006f70
-
-Known issues:
-- TCL_GetVersion crashes when called (skip this function)
-- All tested TCL files produce error -28
-
-Debug findings:
-- TCL_LibInit with NULL params works (returns 1)
-- Font files (jeppesen.tfl, jeppesen.tls) are found but not required for basic init
-- Error -28 occurs during picture data parsing, not during file open
-- The error might be from FUN_100046b0 (picture parsing) returning failure
-- Copied all 113 DLLs from JeppView installation - still same error
-
-Font files found:
-- C:\ProgramData\Jeppesen\Common\TerminalCharts\jeppesen.tfl (font list, magic "YO")
-- C:\ProgramData\Jeppesen\Common\TerminalCharts\jeppesen.tls (line styles, magic "ZO")
-
-Next steps:
-- Try running from JeppView installation directory
-- Check if font definition files are required during picture parsing
-- Analyze FUN_100046b0 exception handling
-- Test with uncompressed TCL files (flags bit 7 = 0)
-- Add more detailed error tracing
+The converter now works correctly:
+- Loads 45 Jeppesen fonts from local directory or `C:\ProgramData\Jeppesen\Common\Fonts\`
+- Exports TCL charts to PDF and EMF formats
+- Fonts render correctly with proper Jeppesen typefaces

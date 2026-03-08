@@ -266,7 +266,7 @@ func (c *Catalog) GetDBF() *dbf.DBF {
 	return c.db
 }
 
-func (c *Catalog) ExportToPDF(tclPath string) ([]byte, error) {
+func (c *Catalog) ExportToPDF(tclPath string, postProcess bool) ([]byte, error) {
 	exporter := export.NewExporter(c.tclDir)
-	return exporter.ExportToPDFBytes(tclPath)
+	return exporter.ExportToPDFBytes(tclPath, postProcess)
 }

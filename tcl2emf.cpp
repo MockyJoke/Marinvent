@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define JEPPVIEW_PATH "C:\\Program Files (x86)\\Jeppesen\\JeppView for Windows"
+#define JEPPESEN_FONTS_PATH "C:\\ProgramData\\Jeppesen\\Common\\Fonts"
+
 typedef int (__cdecl *TCL_LibInit_t)(int, int, int, void*);
 typedef int (__cdecl *TCL_LibClose_t)(void);
 typedef int (__cdecl *TCL_Open_t)(const char*, unsigned int, const char*, void**);
@@ -42,16 +45,28 @@ static MF_LibClose_t MF_LibClose = NULL;
 static MF_BeginPainting_t MF_BeginPainting = NULL;
 static MF_EndPainting_t MF_EndPainting = NULL;
 
+static HMODULE TryLoadLibrary(const char* name) {
+    HMODULE hMod = LoadLibraryA(name);
+    if (hMod) return hMod;
+    
+    char path[MAX_PATH];
+    snprintf(path, MAX_PATH, "%s\\%s", JEPPVIEW_PATH, name);
+    hMod = LoadLibraryA(path);
+    if (hMod) return hMod;
+    
+    return NULL;
+}
+
 static int LoadDLLs(void) {
-    hMrvDrv = LoadLibraryA("mrvdrv.dll");
+    hMrvDrv = TryLoadLibrary("mrvdrv.dll");
     if (!hMrvDrv) {
-        fprintf(stderr, "Failed to load mrvdrv.dll\n");
+        fprintf(stderr, "Failed to load mrvdrv.dll (not found locally or in " JEPPVIEW_PATH ")\n");
         return 0;
     }
     
-    hMrvTcl = LoadLibraryA("mrvtcl.dll");
+    hMrvTcl = TryLoadLibrary("mrvtcl.dll");
     if (!hMrvTcl) {
-        fprintf(stderr, "Failed to load mrvtcl.dll\n");
+        fprintf(stderr, "Failed to load mrvtcl.dll (not found locally or in " JEPPVIEW_PATH ")\n");
         FreeLibrary(hMrvDrv);
         return 0;
     }
@@ -83,10 +98,79 @@ static void UnloadDLLs(void) {
     hMrvTcl = hMrvDrv = NULL;
 }
 
+static char gLoadedFonts[100][MAX_PATH];
+static int gNumLoadedFonts = 0;
+
+static int LoadJeppesenFonts(const char* fontDir) {
+    char searchPath[MAX_PATH];
+    WIN32_FIND_DATAA findData;
+    HANDLE hFind;
+    int loaded = 0;
+    
+    snprintf(searchPath, MAX_PATH, "%s\\*.jtf", fontDir);
+    hFind = FindFirstFileA(searchPath, &findData);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            char fontPath[MAX_PATH];
+            snprintf(fontPath, MAX_PATH, "%s\\%s", fontDir, findData.cFileName);
+            int result = AddFontResourceA(fontPath);
+            if (result > 0) {
+                if (gNumLoadedFonts < 100) {
+                    strncpy(gLoadedFonts[gNumLoadedFonts], fontPath, MAX_PATH - 1);
+                    gNumLoadedFonts++;
+                }
+                loaded++;
+                printf("  Loaded: %s\n", findData.cFileName);
+            } else {
+                printf("  Failed: %s (error %lu)\n", findData.cFileName, GetLastError());
+            }
+        } while (FindNextFileA(hFind, &findData));
+        FindClose(hFind);
+    }
+    
+    snprintf(searchPath, MAX_PATH, "%s\\*.ttf", fontDir);
+    hFind = FindFirstFileA(searchPath, &findData);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            char fontPath[MAX_PATH];
+            snprintf(fontPath, MAX_PATH, "%s\\%s", fontDir, findData.cFileName);
+            int result = AddFontResourceA(fontPath);
+            if (result > 0) {
+                if (gNumLoadedFonts < 100) {
+                    strncpy(gLoadedFonts[gNumLoadedFonts], fontPath, MAX_PATH - 1);
+                    gNumLoadedFonts++;
+                }
+                loaded++;
+                printf("  Loaded: %s\n", findData.cFileName);
+            } else {
+                printf("  Failed: %s (error %lu)\n", findData.cFileName, GetLastError());
+            }
+        } while (FindNextFileA(hFind, &findData));
+        FindClose(hFind);
+    }
+    
+    if (loaded > 0) {
+        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+    }
+    
+    return loaded;
+}
+
+static void UnloadJeppesenFonts(void) {
+    for (int i = 0; i < gNumLoadedFonts; i++) {
+        RemoveFontResourceA(gLoadedFonts[i]);
+    }
+    if (gNumLoadedFonts > 0) {
+        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+    }
+    gNumLoadedFonts = 0;
+}
+
 static int InitTCLLib(void) {
     char fontPath[MAX_PATH] = {0};
     char lineStylePath[MAX_PATH] = {0};
     char tclClassPath[MAX_PATH] = {0};
+    char fontDir[MAX_PATH] = {0};
     
     FILE* f = fopen("jeppesen.tfl", "r");
     if (f) {
@@ -94,11 +178,16 @@ static int InitTCLLib(void) {
         GetFullPathNameA("jeppesen.tfl", MAX_PATH, fontPath, NULL);
         GetFullPathNameA("jeppesen.tls", MAX_PATH, lineStylePath, NULL);
         GetFullPathNameA("lssdef.tcl", MAX_PATH, tclClassPath, NULL);
+        strcpy(fontDir, ".");
     } else {
-        strcpy(fontPath, "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\jeppesen.tfl");
-        strcpy(lineStylePath, "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\jeppesen.tls");
-        strcpy(tclClassPath, "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\lssdef.tcl");
+        strcpy(fontDir, JEPPESEN_FONTS_PATH);
+        snprintf(fontPath, MAX_PATH, "%s\\jeppesen.tfl", JEPPESEN_FONTS_PATH);
+        snprintf(lineStylePath, MAX_PATH, "%s\\jeppesen.tls", JEPPESEN_FONTS_PATH);
+        snprintf(tclClassPath, MAX_PATH, "%s\\lssdef.tcl", JEPPESEN_FONTS_PATH);
     }
+    
+    int fontsLoaded = LoadJeppesenFonts(fontDir);
+    printf("Loaded %d Jeppesen fonts from: %s\n", fontsLoaded, fontDir);
     
     MF_LibOpen();
     return TCL_LibInit((int)fontPath, (int)lineStylePath, (int)tclClassPath, NULL) == 1;
@@ -420,6 +509,7 @@ int main(int argc, char* argv[]) {
     
     if (!InitTCLLib()) {
         fprintf(stderr, "TCL_LibInit failed\n");
+        UnloadJeppesenFonts();
         UnloadDLLs();
         return 1;
     }
@@ -432,6 +522,7 @@ int main(int argc, char* argv[]) {
     }
     
     TCL_LibClose();
+    UnloadJeppesenFonts();
     UnloadDLLs();
     
     return result;

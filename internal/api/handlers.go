@@ -147,17 +147,19 @@ func (h *Handler) GetChartTypes(c *gin.Context) {
 
 // GetChartPDF exports a chart to PDF
 // @Summary Export chart to PDF
-// @Description Exports a specific chart to PDF format. Returns the chart as a PDF file.
+// @Description Exports a specific chart to PDF format. Returns the chart as a PDF file. Post-processing is enabled by default to remove waypoint overlays; use ?no_postprocess=1 to disable.
 // @Tags charts
 // @Accept json
 // @Produce application/pdf
 // @Param icao path string true "ICAO airport code"
 // @Param filename path string true "Chart filename (e.g., KJFK225)"
+// @Param no_postprocess query int false "Set to 1 to disable post-processing (default: 0)"
 // @Success 200 {file} pdf "PDF file containing the chart"
 // @Router /api/v1/charts/{icao}/export/{filename} [get]
 func (h *Handler) GetChartPDF(c *gin.Context) {
 	icao := c.Param("icao")
 	filename := c.Param("filename")
+	noPostProcess := c.Query("no_postprocess") == "1"
 
 	chart := h.catalog.GetChart(filename)
 	if chart == nil || chart.ICAO != icao {
@@ -170,7 +172,7 @@ func (h *Handler) GetChartPDF(c *gin.Context) {
 		return
 	}
 
-	pdfBytes, err := h.catalog.ExportToPDF(chart.TCLPath)
+	pdfBytes, err := h.catalog.ExportToPDF(chart.TCLPath, !noPostProcess)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

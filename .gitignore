@@ -42,3 +42,6 @@ GHYDRA_HTTP.md
 
 # Debug scripts
 debug.bat
+
+*.pdf
+*.bak

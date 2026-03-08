@@ -9,14 +9,16 @@ import (
 )
 
 type Exporter struct {
-	tclDir  string
-	emfTool string
+	tclDir       string
+	emfTool      string
+	postProcess  string
 }
 
 func NewExporter(tclDir string) *Exporter {
 	return &Exporter{
-		tclDir:  tclDir,
-		emfTool: "tcl2emf.exe",
+		tclDir:      tclDir,
+		emfTool:     "tcl2emf.exe",
+		postProcess: "pdf_fixup_threshold.py",
 	}
 }
 
@@ -48,7 +50,7 @@ func (e *Exporter) ExportToEMF(tclPath, emfPath string) error {
 	return nil
 }
 
-func (e *Exporter) ExportToPDFBytes(tclPath string) ([]byte, error) {
+func (e *Exporter) ExportToPDFBytes(tclPath string, postProcess bool) ([]byte, error) {
 	tempDir, err := os.MkdirTemp("", "marinvent-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
@@ -82,12 +84,39 @@ func (e *Exporter) ExportToPDFBytes(tclPath string) ([]byte, error) {
 		return nil, fmt.Errorf("PDF file not created: %w", err)
 	}
 
+	if postProcess {
+		if err := e.runPostProcess(pdfPath); err != nil {
+			fmt.Printf("Warning: post-processing failed: %v\n", err)
+		}
+	}
+
 	pdfData, err := os.ReadFile(pdfPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read PDF: %w", err)
 	}
 
 	return pdfData, nil
+}
+
+func (e *Exporter) runPostProcess(pdfPath string) error {
+	ppPath := e.postProcess
+	if !filepath.IsAbs(ppPath) {
+		absPath, err := filepath.Abs(ppPath)
+		if err != nil {
+			return err
+		}
+		ppPath = absPath
+	}
+
+	if _, err := os.Stat(ppPath); err != nil {
+		return fmt.Errorf("post-process script not found: %s", ppPath)
+	}
+
+	cmd := exec.Command("python", ppPath, pdfPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	
+	return cmd.Run()
 }
 
 func (e *Exporter) ExportToPDF(tclPath, pdfPath string) error {
