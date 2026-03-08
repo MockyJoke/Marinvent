@@ -315,3 +315,7 @@ func (c *Catalog) ExportToPDF(tclPath string, postProcess bool) ([]byte, error) 
 	exporter := export.NewExporter(c.tclDir)
 	return exporter.ExportToPDFBytes(tclPath, postProcess)
 }
+
+func (c *Catalog) GetAirport(icao string) *dbf.Airport {
+	return c.db.GetAirport(icao)
+}

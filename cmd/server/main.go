@@ -13,15 +13,17 @@ func main() {
 	host := flag.String("host", "0.0.0.0", "API server host")
 	chartsDBF := flag.String("charts", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf", "Path to charts.dbf")
 	typesDBF := flag.String("types", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf", "Path to ctypes.dbf")
+	airportsDBF := flag.String("airports", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\Airports.dbf", "Path to Airports.dbf")
 	tclDir := flag.String("tcls", "TCLs", "Directory containing TCL files")
 	flag.Parse()
 
 	cfg := api.ServerConfig{
-		Host:      *host,
-		Port:      *port,
-		ChartsDBF: *chartsDBF,
-		TypesDBF:  *typesDBF,
-		TCLDir:    *tclDir,
+		Host:        *host,
+		Port:        *port,
+		ChartsDBF:   *chartsDBF,
+		TypesDBF:    *typesDBF,
+		AirportsDBF: *airportsDBF,
+		TCLDir:      *tclDir,
 	}
 
 	server, err := api.NewServer(cfg)

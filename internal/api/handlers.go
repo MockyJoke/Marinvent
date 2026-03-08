@@ -61,6 +61,28 @@ type ChartType struct {
 	Type     string `json:"type"`
 }
 
+// Airport is the API response model for airport info
+type Airport struct {
+	ICAO              string   `json:"icao"`
+	IATA              string   `json:"iata,omitempty"`
+	Name              string   `json:"name"`
+	City              string   `json:"city,omitempty"`
+	State             string   `json:"state,omitempty"`
+	CountryCode       string   `json:"country_code,omitempty"`
+	Latitude          float64  `json:"latitude"`
+	Longitude         float64  `json:"longitude"`
+	MagneticVariation float64  `json:"magnetic_variation"`
+	LongestRunwayFt   int      `json:"longest_runway_ft"`
+	Timezone          string   `json:"timezone,omitempty"`
+	AirportUse        string   `json:"airport_use"`
+	Customs           string   `json:"customs,omitempty"`
+	Beacon            bool     `json:"beacon"`
+	JetStartUnit      bool     `json:"jet_start_unit"`
+	Oxygen            []string `json:"oxygen,omitempty"`
+	RepairTypes       []string `json:"repair_types,omitempty"`
+	FuelTypes         []string `json:"fuel_types,omitempty"`
+}
+
 // Config holds API configuration
 type Config struct {
 	ChartsDBFPath string
@@ -153,6 +175,47 @@ func (h *Handler) GetChartTypes(c *gin.Context) {
 	c.JSON(http.StatusOK, ChartTypesResponse{
 		Total: len(typeList),
 		Types: typeList,
+	})
+}
+
+// GetAirport gets an airport by ICAO code
+// @Summary Get airport by ICAO
+// @Description Returns airport details for a given ICAO code
+// @Tags airports
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code (e.g., KJFK, EGLL)"
+// @Success 200 {object} Airport
+// @Router /api/v1/airports/{icao} [get]
+func (h *Handler) GetAirport(c *gin.Context) {
+	icao := c.Param("icao")
+	icao = strings.ToUpper(icao)
+
+	airport := h.catalog.GetAirport(icao)
+	if airport == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "airport not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, Airport{
+		ICAO:              airport.ICAO,
+		IATA:              airport.IATA,
+		Name:              airport.Name,
+		City:              airport.City,
+		State:             airport.State,
+		CountryCode:       airport.CountryCode,
+		Latitude:          airport.Latitude,
+		Longitude:         airport.Longitude,
+		MagneticVariation: airport.MagneticVariation,
+		LongestRunwayFt:   airport.LongestRunwayFt,
+		Timezone:          airport.Timezone,
+		AirportUse:        airport.AirportUse,
+		Customs:           airport.Customs,
+		Beacon:            airport.Beacon,
+		JetStartUnit:      airport.JetStartUnit,
+		Oxygen:            airport.Oxygen,
+		RepairTypes:       airport.RepairTypes,
+		FuelTypes:         airport.FuelTypes,
 	})
 }
 

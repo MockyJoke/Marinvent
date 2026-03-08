@@ -24,6 +24,38 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/airports/{icao}": {
+            "get": {
+                "description": "Returns airport details for a given ICAO code",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "airports"
+                ],
+                "summary": "Get airport by ICAO",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "ICAO airport code (e.g., KJFK, EGLL)",
+                        "name": "icao",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.Airport"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/chart-types": {
             "get": {
                 "description": "Returns all available chart types from ctypes.dbf with codes, categories, and descriptions",
@@ -41,7 +73,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ChartTypesResponse"
+                            "$ref": "#/definitions/api.ChartTypesResponse"
                         }
                     }
                 }
@@ -85,7 +117,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_api.ChartList"
+                            "$ref": "#/definitions/api.ChartList"
                         }
                     }
                 }
@@ -93,7 +125,7 @@ const docTemplate = `{
         },
         "/api/v1/charts/{icao}/export/{filename}": {
             "get": {
-                "description": "Exports a specific chart to PDF format. Returns the chart as a PDF file.",
+                "description": "Exports a specific chart to PDF format. Returns the chart as a PDF file. Post-processing is enabled by default to remove waypoint overlays; use ?no_postprocess=1 to disable.",
                 "consumes": [
                     "application/json"
                 ],
@@ -118,6 +150,12 @@ const docTemplate = `{
                         "name": "filename",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Set to 1 to disable post-processing (default: 0)",
+                        "name": "no_postprocess",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -158,7 +196,75 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "internal_api.ChartInfo": {
+        "api.Airport": {
+            "type": "object",
+            "properties": {
+                "airport_use": {
+                    "type": "string"
+                },
+                "beacon": {
+                    "type": "boolean"
+                },
+                "city": {
+                    "type": "string"
+                },
+                "country_code": {
+                    "type": "string"
+                },
+                "customs": {
+                    "type": "string"
+                },
+                "fuel_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "iata": {
+                    "type": "string"
+                },
+                "icao": {
+                    "type": "string"
+                },
+                "jet_start_unit": {
+                    "type": "boolean"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "longest_runway_ft": {
+                    "type": "integer"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "magnetic_variation": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "oxygen": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "repair_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "state": {
+                    "type": "string"
+                },
+                "timezone": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ChartInfo": {
             "type": "object",
             "properties": {
                 "category": {
@@ -190,14 +296,14 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.ChartList": {
+        "api.ChartList": {
             "description": "Response containing list of charts for an ICAO",
             "type": "object",
             "properties": {
                 "charts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_api.ChartInfo"
+                        "$ref": "#/definitions/api.ChartInfo"
                     }
                 },
                 "icao": {
@@ -208,7 +314,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.ChartType": {
+        "api.ChartType": {
             "type": "object",
             "properties": {
                 "category": {
@@ -222,7 +328,7 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_api.ChartTypesResponse": {
+        "api.ChartTypesResponse": {
             "type": "object",
             "properties": {
                 "total": {
@@ -231,7 +337,7 @@ const docTemplate = `{
                 "types": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/internal_api.ChartType"
+                        "$ref": "#/definitions/api.ChartType"
                     }
                 }
             }

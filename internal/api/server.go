@@ -40,11 +40,12 @@ type Server struct {
 }
 
 type ServerConfig struct {
-	Host      string
-	Port      string
-	ChartsDBF string
-	TypesDBF  string
-	TCLDir    string
+	Host        string
+	Port        string
+	ChartsDBF   string
+	TypesDBF    string
+	AirportsDBF string
+	TCLDir      string
 }
 
 func NewServer(cfg ServerConfig) (*Server, error) {
@@ -55,7 +56,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		cfg.Port = "8080"
 	}
 
-	dbf, err := dbf.New(cfg.ChartsDBF, cfg.TypesDBF)
+	dbf, err := dbf.New(cfg.ChartsDBF, cfg.TypesDBF, cfg.AirportsDBF)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load DBF files: %w", err)
 	}
@@ -95,6 +96,7 @@ func registerRoutes(r *gin.Engine, h *Handler) {
 		api.GET("/charts/:icao", h.GetCharts)
 		api.GET("/charts/:icao/export/:filename", h.GetChartPDF)
 		api.GET("/chart-types", h.GetChartTypes)
+		api.GET("/airports/:icao", h.GetAirport)
 	}
 }
 
@@ -103,6 +105,7 @@ func (s *Server) Start() error {
 	log.Printf("Starting Marinvent API server on %s", addr)
 	log.Printf("Charts DBF: %s", s.config.ChartsDBF)
 	log.Printf("Types DBF: %s", s.config.TypesDBF)
+	log.Printf("Airports DBF: %s", s.config.AirportsDBF)
 	log.Printf("TCL Directory: %s", s.config.TCLDir)
 	log.Printf("Swagger UI: http://%s/swagger/index.html", addr)
 	return s.router.Run(addr)
@@ -114,11 +117,12 @@ func (s *Server) GetConfig() ServerConfig {
 
 func LoadConfigFromEnv() ServerConfig {
 	return ServerConfig{
-		Host:      getEnv("HOST", "0.0.0.0"),
-		Port:      getEnv("PORT", "8080"),
-		ChartsDBF: getEnv("CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf"),
-		TypesDBF:  getEnv("TYPES_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf"),
-		TCLDir:    getEnv("TCL_DIR", "TCLs"),
+		Host:        getEnv("HOST", "0.0.0.0"),
+		Port:        getEnv("PORT", "8080"),
+		ChartsDBF:   getEnv("CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf"),
+		TypesDBF:    getEnv("TYPES_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf"),
+		AirportsDBF: getEnv("AIRPORTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\Airports.dbf"),
+		TCLDir:      getEnv("TCL_DIR", "TCLs"),
 	}
 }
 

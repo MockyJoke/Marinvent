@@ -1,6 +1,51 @@
 basePath: /
 definitions:
-  internal_api.ChartInfo:
+  api.Airport:
+    properties:
+      airport_use:
+        type: string
+      beacon:
+        type: boolean
+      city:
+        type: string
+      country_code:
+        type: string
+      customs:
+        type: string
+      fuel_types:
+        items:
+          type: string
+        type: array
+      iata:
+        type: string
+      icao:
+        type: string
+      jet_start_unit:
+        type: boolean
+      latitude:
+        type: number
+      longest_runway_ft:
+        type: integer
+      longitude:
+        type: number
+      magnetic_variation:
+        type: number
+      name:
+        type: string
+      oxygen:
+        items:
+          type: string
+        type: array
+      repair_types:
+        items:
+          type: string
+        type: array
+      state:
+        type: string
+      timezone:
+        type: string
+    type: object
+  api.ChartInfo:
     properties:
       category:
         type: string
@@ -21,19 +66,19 @@ definitions:
       type_name:
         type: string
     type: object
-  internal_api.ChartList:
+  api.ChartList:
     description: Response containing list of charts for an ICAO
     properties:
       charts:
         items:
-          $ref: '#/definitions/internal_api.ChartInfo'
+          $ref: '#/definitions/api.ChartInfo'
         type: array
       icao:
         type: string
       total:
         type: integer
     type: object
-  internal_api.ChartType:
+  api.ChartType:
     properties:
       category:
         type: string
@@ -42,13 +87,13 @@ definitions:
       type:
         type: string
     type: object
-  internal_api.ChartTypesResponse:
+  api.ChartTypesResponse:
     properties:
       total:
         type: integer
       types:
         items:
-          $ref: '#/definitions/internal_api.ChartType'
+          $ref: '#/definitions/api.ChartType'
         type: array
     type: object
 host: localhost:8080
@@ -65,6 +110,27 @@ info:
   title: Marinvent Chart API
   version: "1.0"
 paths:
+  /api/v1/airports/{icao}:
+    get:
+      consumes:
+      - application/json
+      description: Returns airport details for a given ICAO code
+      parameters:
+      - description: ICAO airport code (e.g., KJFK, EGLL)
+        in: path
+        name: icao
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Airport'
+      summary: Get airport by ICAO
+      tags:
+      - airports
   /api/v1/chart-types:
     get:
       consumes:
@@ -77,7 +143,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_api.ChartTypesResponse'
+            $ref: '#/definitions/api.ChartTypesResponse'
       summary: List all chart types
       tags:
       - charts
@@ -108,7 +174,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_api.ChartList'
+            $ref: '#/definitions/api.ChartList'
       summary: List charts for ICAO
       tags:
       - charts
@@ -117,7 +183,8 @@ paths:
       consumes:
       - application/json
       description: Exports a specific chart to PDF format. Returns the chart as a
-        PDF file.
+        PDF file. Post-processing is enabled by default to remove waypoint overlays;
+        use ?no_postprocess=1 to disable.
       parameters:
       - description: ICAO airport code
         in: path
@@ -129,6 +196,10 @@ paths:
         name: filename
         required: true
         type: string
+      - description: 'Set to 1 to disable post-processing (default: 0)'
+        in: query
+        name: no_postprocess
+        type: integer
       produces:
       - application/pdf
       responses:
