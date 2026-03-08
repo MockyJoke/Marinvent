@@ -18,13 +18,6 @@ jobs:
           - os: ubuntu-latest
             goos: linux
             goarch: amd64
-          - os: macos-latest
-            goos: darwin
-            goarch: amd64
-          # Windows build for all (server, client, and tcl2emf)
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
 
     steps:
       - uses: actions/checkout@v4
@@ -83,20 +76,9 @@ jobs:
 
           if [ "${{ runner.os }}" == "Windows" ]; then
             # Windows package
-            cp marinvent-server.exe marinvent-cli.exe tcl2emf.exe pdf_fixup_threshold.py build-artifacts/
+            cp marinvent-server.exe marinvent-cli.exe tcl2emf.exe pdf_fixup_threshold.py jdmtool/* build-artifacts/
             cd build-artifacts
             7z a -tzip ../marinvent-windows-${{ matrix.goarch }}.zip *
-          elif [ "${{ runner.os }}" == "macOS" ]; then
-            # macOS package
-            cp marinvent-server marinvent-cli pdf_fixup_threshold.py build-artifacts/
-            cd build-artifacts
-            zip -r ../marinvent-macos-${{ matrix.goarch }}.zip *
-          else
-            # Linux package
-            cp marinvent-server marinvent-cli pdf_fixup_threshold.py build-artifacts/
-            cd build-artifacts
-            zip -r ../marinvent-linux-${{ matrix.goarch }}.zip *
-          fi
 
       # Upload artifacts to workflow artifacts
       - name: Upload Artifacts
