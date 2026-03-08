@@ -57,11 +57,6 @@ jobs:
         run: |
           cl.exe /EHsc /MD tcl2emf.cpp /Fe:tcl2emf.exe gdi32.lib user32.lib winspool.lib
 
-      # Copy Python script
-      - name: Prepare Python Script
-        run: |
-          copy pdf_fixup_threshold.py pdf_fixup_threshold.py
-
       # Create platform-specific artifact package
       - name: Package Artifacts
         shell: bash
