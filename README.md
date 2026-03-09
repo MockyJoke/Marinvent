@@ -5,11 +5,23 @@ A Go-based API for accessing and exporting Jeppesen terminal charts from TCL fil
 ## Requirements
 
 - **Windows** (required for TCL rendering via mrvtcl.dll/mrvdrv.dll)
-- **Go 1.25+**
+- **Go 1.25+** (for build)
+- **Python 3.10+** (for pdf cleanup)
 - **Jeppesen data files**:
   - `charts.dbf` - Chart database
   - `ctypes.dbf` - Chart type definitions
+  - airports.dbf - Airport database
   - TCL files (extracted charts)
+- **Jeppesen DLLs** (e.g. Jeppview installation)
+
+## Installation
+
+1. Download the latest release from the [releases page](https://github.com/StarNumber12046/marinvent/releases).
+2. Extract the files to a directory of your choice.
+3. Create a directory named `TCLs` in the same directory as the executables.
+4. Open a command prompt in the TCLs directory and run `python ..\jdmtool\chartview.py -x C:\ProgramData\Jeppesen\Common\TerminalCharts\Charts.bin`.
+5. Run the executables.
+6. (optional) run a GUI client like [BetterJepp](https://github.com/StarNumber12046/BetterJepp) to view the charts.
 
 ## Quick Start
 
@@ -90,13 +102,13 @@ curl -o chart.pdf "http://localhost:8080/api/v1/charts/KJFK/export/KJFK225"
 
 The API server respects these environment variables:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `8080` | HTTP server port |
-| `HOST` | `0.0.0.0` | HTTP server host |
-| `CHARTS_DBF` | `C:\ProgramData\Jeppesen\Common\TerminalCharts\charts.dbf` | Charts DBF path |
-| `TYPES_DBF` | `C:\ProgramData\Jeppesen\Common\TerminalCharts\ctypes.dbf` | Chart types DBF path |
-| `TCL_DIR` | `TCLs` | Directory containing TCL files |
+| Variable     | Default                                                    | Description                    |
+| ------------ | ---------------------------------------------------------- | ------------------------------ |
+| `PORT`       | `8080`                                                     | HTTP server port               |
+| `HOST`       | `0.0.0.0`                                                  | HTTP server host               |
+| `CHARTS_DBF` | `C:\ProgramData\Jeppesen\Common\TerminalCharts\charts.dbf` | Charts DBF path                |
+| `TYPES_DBF`  | `C:\ProgramData\Jeppesen\Common\TerminalCharts\ctypes.dbf` | Chart types DBF path           |
+| `TCL_DIR`    | `TCLs`                                                     | Directory containing TCL files |
 
 ## CLI Usage
 
@@ -119,31 +131,33 @@ The API server respects these environment variables:
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-| `GET` | `/swagger/index.html` | Swagger UI (interactive API docs) |
-| `GET` | `/swagger.json` | OpenAPI 3.0 specification |
-| `GET` | `/api/v1/charts/{icao}` | List charts for ICAO |
-| `GET` | `/api/v1/charts/{icao}/export/{filename}` | Export chart to PDF |
-| `GET` | `/api/v1/chart-types` | List all chart types |
+| Method | Endpoint                                  | Description                       |
+| ------ | ----------------------------------------- | --------------------------------- |
+| `GET`  | `/health`                                 | Health check                      |
+| `GET`  | `/swagger/index.html`                     | Swagger UI (interactive API docs) |
+| `GET`  | `/swagger.json`                           | OpenAPI 3.0 specification         |
+| `GET`  | `/api/v1/charts/{icao}`                   | List charts for ICAO              |
+| `GET`  | `/api/v1/charts/{icao}/export/{filename}` | Export chart to PDF               |
+| `GET`  | `/api/v1/chart-types`                     | List all chart types              |
 
 ### Query Parameters for `/api/v1/charts/{icao}`
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `type` | string | Filter by chart type (code like `1L` or name like `RNAV`, `ILS`) |
-| `search` | string | Search in procedure name (PROC_ID) |
+| Parameter | Type   | Description                                                      |
+| --------- | ------ | ---------------------------------------------------------------- |
+| `type`    | string | Filter by chart type (code like `1L` or name like `RNAV`, `ILS`) |
+| `search`  | string | Search in procedure name (PROC_ID)                               |
 
 ## Type Lookup
 
 The `type` parameter supports both:
+
 - **Raw codes**: `1L`, `AP`, `01`, etc.
 - **Human-readable names**: `RNAV`, `ILS`, `VOR`, `AIRPORT`, etc.
 
 When using a name, the API searches both the `TYPE` and `CATEGORY` fields in `ctypes.dbf` and returns all matching chart types.
 
 Examples:
+
 - `?type=RNAV` → matches codes `1L`, `1C`, etc. (all RNAV types)
 - `?type=ILS` → matches codes `01`, `1K`, `2A`, etc. (all ILS types)
 - `?type=AP` → matches code `AP` (Airport)
@@ -151,6 +165,7 @@ Examples:
 ## Data Sources
 
 This tool works with Jeppesen terminal chart data. The DBF files are typically located at:
+
 - `C:\ProgramData\Jeppesen\Common\TerminalCharts\charts.dbf`
 - `C:\ProgramData\Jeppesen\Common\TerminalCharts\ctypes.dbf`
 
