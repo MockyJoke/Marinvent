@@ -20,7 +20,7 @@ A Go-based API for accessing and exporting Jeppesen terminal charts from TCL fil
 2. Extract the files to a directory of your choice.
 3. Create a directory named `TCLs` in the same directory as the executables.
 4. Open a command prompt in the TCLs directory and run `python ..\jdmtool\chartview.py -x C:\ProgramData\Jeppesen\Common\TerminalCharts\Charts.bin`.
-5. Run the executables.
+5. Run the server with `marinvent-api.exe`.
 6. (optional) run a GUI client like [BetterJepp](https://github.com/StarNumber12046/BetterJepp) to view the charts.
 
 ## Quick Start
