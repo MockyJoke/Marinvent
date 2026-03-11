@@ -16,6 +16,8 @@ A Go-based API for accessing and exporting Jeppesen terminal charts from TCL fil
 
 ## Installation
 
+### A video version is available [on YouTube](https://youtu.be/UUESsbvshbc)
+
 1. Download the latest release from the [releases page](https://github.com/StarNumber12046/marinvent/releases).
 2. Extract the files to a directory of your choice.
 3. Create a directory named `TCLs` in the same directory as the executables.
