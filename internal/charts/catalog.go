@@ -19,6 +19,7 @@ type ChartInfo struct {
 	DateEff   string
 	SheetID   string
 	TCLPath   string
+	IsVFR     bool
 }
 
 type Catalog struct {
@@ -77,6 +78,7 @@ func (c *Catalog) buildCache() {
 			DateEff:   strings.TrimSpace(chart.DateEff),
 			SheetID:   strings.TrimSpace(chart.SheetID),
 			TCLPath:   tclPath,
+			IsVFR:     chart.IsVFR,
 		}
 		if chartType != nil {
 			info.TypeName = strings.TrimSpace(chartType.Type)
@@ -235,7 +237,7 @@ func (c *Catalog) FilterByTypeName(typeName string) []*ChartInfo {
 	return results
 }
 
-func (c *Catalog) Filter(icao, typeName, search string) []*ChartInfo {
+func (c *Catalog) Filter(icao, typeName, search, types string) []*ChartInfo {
 	c.mu.RLock()
 	if len(c.chartCache) == 0 {
 		c.mu.RUnlock()
@@ -244,18 +246,24 @@ func (c *Catalog) Filter(icao, typeName, search string) []*ChartInfo {
 	}
 	defer c.mu.RUnlock()
 
+	includeIFR, includeVFR := parseChartTypes(types)
+
 	var candidates []*ChartInfo
 
 	if icao != "" {
 		icao = strings.ToUpper(icao)
 		for _, info := range c.chartCache {
 			if info.ICAO == icao {
-				candidates = append(candidates, info)
+				if shouldIncludeChart(info, includeIFR, includeVFR) {
+					candidates = append(candidates, info)
+				}
 			}
 		}
 	} else {
 		for _, info := range c.chartCache {
-			candidates = append(candidates, info)
+			if shouldIncludeChart(info, includeIFR, includeVFR) {
+				candidates = append(candidates, info)
+			}
 		}
 	}
 
@@ -294,6 +302,26 @@ func (c *Catalog) Filter(icao, typeName, search string) []*ChartInfo {
 	}
 
 	return candidates
+}
+
+func parseChartTypes(types string) (includeIFR, includeVFR bool) {
+	if types == "" {
+		return true, true
+	}
+	typesLower := strings.ToLower(types)
+	includeIFR = strings.Contains(typesLower, "ifr")
+	includeVFR = strings.Contains(typesLower, "vfr")
+	if !includeIFR && !includeVFR {
+		return true, true
+	}
+	return includeIFR, includeVFR
+}
+
+func shouldIncludeChart(info *ChartInfo, includeIFR, includeVFR bool) bool {
+	if info.IsVFR {
+		return includeVFR
+	}
+	return includeIFR
 }
 
 func (c *Catalog) NumCharts() int {

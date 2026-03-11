@@ -18,6 +18,7 @@ var (
 
 func main() {
 	chartsPath := flag.String("charts", filepath.Join(JeppDataPath, "charts.dbf"), "Path to charts.dbf")
+	vfrChartsPath := flag.String("vfrcharts", filepath.Join(JeppDataPath, "vfrchrts.dbf"), "Path to vfrchrts.dbf")
 	ctypesPath := flag.String("types", filepath.Join(JeppDataPath, "ctypes.dbf"), "Path to ctypes.dbf")
 	airportsPath := flag.String("airports", filepath.Join(JeppDataPath, "Airports.dbf"), "Path to Airports.dbf")
 	tclDir := flag.String("tcls", "TCLs", "Directory containing TCL files")
@@ -31,7 +32,7 @@ func main() {
 	quiet := flag.Bool("q", false, "Quiet mode (less verbose output)")
 	flag.Parse()
 
-	dbf, err := dbf.New(*chartsPath, *ctypesPath, *airportsPath)
+	dbf, err := dbf.New(*chartsPath, *vfrChartsPath, *ctypesPath, *airportsPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading DBF files: %v\n", err)
 		os.Exit(1)

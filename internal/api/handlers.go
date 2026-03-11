@@ -38,6 +38,7 @@ type ChartInfo struct {
 	DateEff   string `json:"date_eff"`
 	SheetID   string `json:"sheet_id"`
 	HasTCL    bool   `json:"has_tcl"`
+	IsVFR     bool   `json:"is_vfr"`
 }
 
 // ChartList is the API response for listing charts
@@ -113,6 +114,7 @@ func NewHandler(catalog *charts.Catalog, config *Config) *Handler {
 // @Param icao path string true "ICAO airport code (e.g., KJFK, EGLL)"
 // @Param type query string false "Chart type - can be code (1L, AP) or name (RNAV, ILS, AIRPORT). Looks up in ctypes.dbf"
 // @Param search query string false "Search text to filter by PROC_ID (procedure name)"
+// @Param types query string false "Chart types to include - can be 'vfr', 'ifr', or 'vfr,ifr' (default: both)"
 // @Success 200 {object} ChartList
 // @Router /api/v1/charts/{icao} [get]
 func (h *Handler) GetCharts(c *gin.Context) {
@@ -121,9 +123,10 @@ func (h *Handler) GetCharts(c *gin.Context) {
 	icao := c.Param("icao")
 	typeQuery := c.Query("type")
 	search := c.Query("search")
+	types := c.Query("types")
 
 	t := time.Now()
-	results := h.catalog.Filter(icao, typeQuery, search)
+	results := h.catalog.Filter(icao, typeQuery, search, types)
 	filterTime := time.Since(t)
 
 	chartList := make([]ChartInfo, 0, len(results))
@@ -138,6 +141,7 @@ func (h *Handler) GetCharts(c *gin.Context) {
 			DateEff:   r.DateEff,
 			SheetID:   r.SheetID,
 			HasTCL:    r.TCLPath != "",
+			IsVFR:     r.IsVFR,
 		})
 	}
 
@@ -302,6 +306,6 @@ func logTimings(timings map[string]time.Duration, filename string) {
 func (h *Handler) GetHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
-		"version": "1.0.0",
+		"version": "1.3.0",
 	})
 }

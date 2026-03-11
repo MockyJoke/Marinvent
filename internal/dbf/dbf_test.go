@@ -12,7 +12,7 @@ func TestAirportsDBFFields(t *testing.T) {
 		t.Skip("Airports.dbf not found at", airportsPath)
 	}
 
-	db, err := New("", "", airportsPath)
+	db, err := New("", "", "", airportsPath)
 	if err != nil {
 		t.Fatalf("Failed to load airports.dbf: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestAirportsDBFSampleData(t *testing.T) {
 		t.Skip("Airports.dbf not found at", airportsPath)
 	}
 
-	db, err := New("", "", airportsPath)
+	db, err := New("", "", "", airportsPath)
 	if err != nil {
 		t.Fatalf("Failed to load airports.dbf: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestAirportsParsing(t *testing.T) {
 		t.Skip("Airports.dbf not found at", airportsPath)
 	}
 
-	db, err := New("", "", airportsPath)
+	db, err := New("", "", "", airportsPath)
 	if err != nil {
 		t.Fatalf("Failed to load airports.dbf: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestDumpAirportsFieldsForDoc(t *testing.T) {
 		t.Skip("Airports.dbf not found at", airportsPath)
 	}
 
-	db, err := New("", "", airportsPath)
+	db, err := New("", "", "", airportsPath)
 	if err != nil {
 		t.Fatalf("Failed to load airports.dbf: %v", err)
 	}

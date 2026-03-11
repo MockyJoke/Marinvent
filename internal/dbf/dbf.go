@@ -19,6 +19,7 @@ type Chart struct {
 	GeoRef    string
 	SheetID   string
 	FtBk      string
+	IsVFR     bool
 }
 
 type ChartType struct {
@@ -51,6 +52,7 @@ type Airport struct {
 
 type DBF struct {
 	charts     *dbf.DbfTable
+	vfrCharts  *dbf.DbfTable
 	ctypes     *dbf.DbfTable
 	airports   *dbf.DbfTable
 	chartMap   map[string]*Chart
@@ -58,12 +60,19 @@ type DBF struct {
 	airportMap map[string]*Airport
 }
 
-func New(chartsPath, ctypesPath, airportsPath string) (*DBF, error) {
-	var charts, ctypes *dbf.DbfTable
+func New(chartsPath, vfrChartsPath, ctypesPath, airportsPath string) (*DBF, error) {
+	var charts, vfrCharts, ctypes *dbf.DbfTable
 	var err error
 
 	if chartsPath != "" {
 		charts, err = dbf.LoadFile(chartsPath)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if vfrChartsPath != "" {
+		vfrCharts, err = dbf.LoadFile(vfrChartsPath)
 		if err != nil {
 			return nil, err
 		}
@@ -86,6 +95,7 @@ func New(chartsPath, ctypesPath, airportsPath string) (*DBF, error) {
 
 	d := &DBF{
 		charts:     charts,
+		vfrCharts:  vfrCharts,
 		ctypes:     ctypes,
 		airports:   airports,
 		chartMap:   make(map[string]*Chart),
@@ -116,6 +126,32 @@ func (d *DBF) buildMaps() {
 					GeoRef:    trim(row[9]),
 					SheetID:   trim(row[10]),
 					FtBk:      trim(row[11]),
+					IsVFR:     false,
+				}
+				d.chartMap[chart.Filename] = chart
+			}
+		}
+	}
+
+	if d.vfrCharts != nil {
+		iter := d.vfrCharts.NewIterator()
+		for iter.Next() {
+			row := iter.Row()
+			if len(row) >= 12 {
+				chart := &Chart{
+					ICAO:      trim(row[0]),
+					Filename:  trim(row[1]),
+					ChartType: trim(row[2]),
+					IndexNo:   trim(row[3]),
+					ProcID:    trim(row[4]),
+					Action:    trim(row[5]),
+					DateRev:   trim(row[6]),
+					DateEff:   trim(row[7]),
+					TrimSize:  trim(row[8]),
+					GeoRef:    trim(row[9]),
+					SheetID:   trim(row[10]),
+					FtBk:      trim(row[11]),
+					IsVFR:     true,
 				}
 				d.chartMap[chart.Filename] = chart
 			}
@@ -201,6 +237,18 @@ func (d *DBF) FilterByICAO(icao string) []*Chart {
 	var results []*Chart
 	for _, c := range d.chartMap {
 		if c.ICAO == icao {
+			results = append(results, c)
+		}
+	}
+	return results
+}
+
+func (d *DBF) FilterByChartTypes(includeIFR, includeVFR bool) []*Chart {
+	var results []*Chart
+	for _, c := range d.chartMap {
+		if c.IsVFR && includeVFR {
+			results = append(results, c)
+		} else if !c.IsVFR && includeIFR {
 			results = append(results, c)
 		}
 	}

@@ -2,6 +2,7 @@ package export
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -53,7 +54,11 @@ func (e *Exporter) ExportToEMF(tclPath, emfPath string) error {
 }
 
 func (e *Exporter) ExportToPDFBytes(tclPath string, postProcess bool) ([]byte, error) {
-	start := time.Now()
+	// 0. Concurrency Guard
+	// If e.mu is added to your Exporter struct, uncomment the next two lines:
+	// e.mu.Lock()
+	// defer e.mu.Unlock()
+
 	var timings []string
 	tick := func(name string, t time.Time) time.Time {
 		now := time.Now()
@@ -71,53 +76,92 @@ func (e *Exporter) ExportToPDFBytes(tclPath string, postProcess bool) ([]byte, e
 	t = tick("mkdir", t)
 
 	pdfPath := filepath.Join(tempDir, "output.pdf")
-
 	toolPath := e.getToolPath()
-	workDir := filepath.Dir(toolPath)
-	if workDir == "." {
-		absPath, err := filepath.Abs(".")
-		if err == nil {
-			workDir = absPath
-		}
-	}
+	workDir, _ := filepath.Abs(filepath.Dir(toolPath))
 
+	// 1. Execute the tool
 	cmd := exec.Command(toolPath, tclPath, pdfPath)
 	cmd.Dir = workDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
 	t = tick("setup", t)
-	err = cmd.Run()
+
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("tcl2emf failed: %w", err)
+		return nil, fmt.Errorf("tcl2emf failed: %w, output: %s", err, string(output))
 	}
 	t = tick("tcl2emf", t)
 
-	time.Sleep(200 * time.Millisecond)
-	t = tick("sleep", t)
+	// 2. Poll for a valid, unlocked, and FINALIZED PDF
+	var pdfData []byte
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(200 * time.Millisecond) // Slightly slower ticks for disk I/O health
+	defer ticker.Stop()
 
-	if _, err := os.Stat(pdfPath); err != nil {
-		return nil, fmt.Errorf("PDF file not created: %w", err)
+	success := false
+PollLoop:
+	for {
+		select {
+		case <-timeout:
+			return nil, fmt.Errorf("timeout: PDF at %s never finalized (Spooler hang)", pdfPath)
+		case <-ticker.C:
+			info, err := os.Stat(pdfPath)
+			// PDF must have a basic header (~100 bytes)
+			if err != nil || info.Size() < 100 {
+				continue
+			}
+
+			// A: Check for File Lock (Windows specific)
+			// Try to open with Read/Write access to see if Spooler still has it
+			f, err := os.OpenFile(pdfPath, os.O_RDWR, 0)
+			if err != nil {
+				// If we can't open it RDWR, the spooler still likely has a write lock
+				continue
+			}
+
+			// B: Check for PDF Footer (Structural Integrity)
+			// PDFs are read from the back. We need to find %%EOF.
+			buf := make([]byte, 1024)
+			fileSize := info.Size()
+			offset := fileSize - 1024
+			if offset < 0 {
+				offset = 0
+			}
+
+			_, readErr := f.ReadAt(buf, offset)
+			f.Close() // Always close immediately
+
+			if readErr == nil || readErr == io.EOF {
+				content := string(buf)
+				if strings.Contains(content, "%%EOF") {
+					// Valid PDF structure found!
+					pdfData, err = os.ReadFile(pdfPath)
+					if err == nil && len(pdfData) > 0 {
+						success = true
+						break PollLoop
+					}
+				}
+			}
+		}
 	}
+	t = tick("polling", t)
 
-	if postProcess {
-		if err := e.runPostProcess(pdfPath); err != nil {
+	// 3. Post-process
+	if postProcess && success {
+		if err := e.runPostProcess(pdfPath); err == nil {
+			// Re-read finalized data after python fixup
+			pdfData, _ = os.ReadFile(pdfPath)
+		} else {
 			fmt.Printf("Warning: post-processing failed: %v\n", err)
 		}
 	}
 	t = tick("postprocess", t)
 
-	pdfData, err := os.ReadFile(pdfPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read PDF: %w", err)
-	}
-	t = tick("read", t)
-
-	total := time.Since(start).Milliseconds()
-	timings = append(timings, fmt.Sprintf("total=%dms", total))
 	log.Printf("[EXPORT] %s: %s", filepath.Base(tclPath), strings.Join(timings, " "))
-
 	return pdfData, nil
+}
+
+// Helper to check for basic PDF magic number
+func isValidPDF(data []byte) bool {
+	return len(data) > 4 && string(data[:4]) == "%PDF"
 }
 
 func (e *Exporter) runPostProcess(pdfPath string) error {

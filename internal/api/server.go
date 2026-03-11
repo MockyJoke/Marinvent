@@ -40,12 +40,13 @@ type Server struct {
 }
 
 type ServerConfig struct {
-	Host        string
-	Port        string
-	ChartsDBF   string
-	TypesDBF    string
-	AirportsDBF string
-	TCLDir      string
+	Host         string
+	Port         string
+	ChartsDBF    string
+	VFRChartsDBF string
+	TypesDBF     string
+	AirportsDBF  string
+	TCLDir       string
 }
 
 func NewServer(cfg ServerConfig) (*Server, error) {
@@ -56,7 +57,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		cfg.Port = "8080"
 	}
 
-	dbf, err := dbf.New(cfg.ChartsDBF, cfg.TypesDBF, cfg.AirportsDBF)
+	dbf, err := dbf.New(cfg.ChartsDBF, cfg.VFRChartsDBF, cfg.TypesDBF, cfg.AirportsDBF)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load DBF files: %w", err)
 	}
@@ -104,6 +105,7 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf("%s:%s", s.addr, s.port)
 	log.Printf("Starting Marinvent API server on %s", addr)
 	log.Printf("Charts DBF: %s", s.config.ChartsDBF)
+	log.Printf("VFR Charts DBF: %s", s.config.VFRChartsDBF)
 	log.Printf("Types DBF: %s", s.config.TypesDBF)
 	log.Printf("Airports DBF: %s", s.config.AirportsDBF)
 	log.Printf("TCL Directory: %s", s.config.TCLDir)
@@ -117,12 +119,13 @@ func (s *Server) GetConfig() ServerConfig {
 
 func LoadConfigFromEnv() ServerConfig {
 	return ServerConfig{
-		Host:        getEnv("HOST", "0.0.0.0"),
-		Port:        getEnv("PORT", "8080"),
-		ChartsDBF:   getEnv("CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf"),
-		TypesDBF:    getEnv("TYPES_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf"),
-		AirportsDBF: getEnv("AIRPORTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\Airports.dbf"),
-		TCLDir:      getEnv("TCL_DIR", "TCLs"),
+		Host:         getEnv("HOST", "0.0.0.0"),
+		Port:         getEnv("PORT", "8080"),
+		ChartsDBF:    getEnv("CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf"),
+		VFRChartsDBF: getEnv("VFR_CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\vfrchrts.dbf"),
+		TypesDBF:     getEnv("TYPES_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf"),
+		AirportsDBF:  getEnv("AIRPORTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\Airports.dbf"),
+		TCLDir:       getEnv("TCL_DIR", "TCLs"),
 	}
 }
 
