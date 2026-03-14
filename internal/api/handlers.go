@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"marinvent/internal/charts"
+	"marinvent/internal/georef"
 
 	"github.com/gin-gonic/gin"
 )
@@ -93,15 +94,17 @@ type Config struct {
 
 // Handler holds the catalog and config
 type Handler struct {
-	catalog *charts.Catalog
-	config  *Config
+	catalog   *charts.Catalog
+	config    *Config
+	geoClient *georef.Client
 }
 
 // NewHandler creates a new API handler
 func NewHandler(catalog *charts.Catalog, config *Config) *Handler {
 	return &Handler{
-		catalog: catalog,
-		config:  config,
+		catalog:   catalog,
+		config:    config,
+		geoClient: georef.NewClient(config.TCLDir),
 	}
 }
 
@@ -296,13 +299,14 @@ func logTimings(timings map[string]time.Duration, filename string) {
 }
 
 // GetHealth returns health check
-// ChartDataResponse is the API response for getting chart data
+// ChartDataResponse is the API response for getting chart data (api.ChartDataResponse)
 type ChartDataResponse struct {
-	Filename string `json:"filename"`
-	ICAO     string `json:"icao"`
-	Width    int32  `json:"width"`
-	Height   int32  `json:"height"`
-	HasTCL   bool   `json:"has_tcl"`
+	Filename string                `json:"filename"`
+	ICAO     string                `json:"icao"`
+	Width    int32                 `json:"width"`
+	Height   int32                 `json:"height"`
+	HasTCL   bool                  `json:"has_tcl"`
+	Georef   *GeoRefStatusResponse `json:"georef,omitempty"`
 }
 
 // GetChartData returns data for a single chart
@@ -333,6 +337,36 @@ func (h *Handler) GetChartData(c *gin.Context) {
 		HasTCL:   chart.TCLPath != "",
 	}
 
+	if chart.TCLPath != "" {
+		status, err := h.geoClient.GetStatus(chart.TCLPath)
+		if err != nil {
+			fmt.Println(err.Error())
+		} else {
+			fmt.Println(status)
+		}
+		if err == nil && status != nil {
+			if status.Georeferenced {
+				response.Georef = &GeoRefStatusResponse{
+					Georeferenced: true,
+					Bounds: &ChartBoundsResponse{
+						Left:   status.Bounds.Left,
+						Top:    status.Bounds.Top,
+						Right:  status.Bounds.Right,
+						Bottom: status.Bounds.Bottom,
+						Width:  status.Bounds.Width,
+						Height: status.Bounds.Height,
+					},
+				}
+				response.Width = status.Bounds.Width
+				response.Height = status.Bounds.Height
+			} else {
+				response.Georef = &GeoRefStatusResponse{
+					Georeferenced: false,
+				}
+			}
+		}
+	}
+
 	c.JSON(http.StatusOK, response)
 }
 
@@ -346,6 +380,311 @@ func (h *Handler) GetChartData(c *gin.Context) {
 func (h *Handler) GetHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "ok",
-		"version": "1.3.0",
+		"version": "2.3.0",
 	})
+}
+
+// CoordToPixelRequest is the request for coordinate to pixel conversion
+type CoordToPixelRequest struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+// CoordToPixelResponse is the response for coordinate to pixel conversion
+type CoordToPixelResponse struct {
+	X     int    `json:"x,omitempty"`
+	Y     int    `json:"y,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// PixelToCoordRequest is the request for pixel to coordinate conversion
+type PixelToCoordRequest struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+// PixelToCoordResponse is the response for pixel to coordinate conversion
+type PixelToCoordResponse struct {
+	Latitude  float64 `json:"latitude,omitempty"`
+	Longitude float64 `json:"longitude,omitempty"`
+	Error     string  `json:"error,omitempty"`
+}
+
+// BatchCoordToPixelRequest is a batch request for coordinate conversions
+type BatchCoordToPixelRequest struct {
+	Points []CoordToPixelRequest `json:"points"`
+}
+
+// BatchCoordToPixelResponse is a batch response for coordinate conversions
+type BatchCoordToPixelResponse struct {
+	Points []CoordToPixelResponse `json:"points"`
+}
+
+// BatchPixelToCoordRequest is a batch request for pixel conversions
+type BatchPixelToCoordRequest struct {
+	Points []PixelToCoordRequest `json:"points"`
+}
+
+// BatchPixelToCoordResponse is a batch response for pixel conversions
+type BatchPixelToCoordResponse struct {
+	Points []PixelToCoordResponse `json:"points"`
+}
+
+// ChartBoundsResponse is the response for chart bounds
+type ChartBoundsResponse struct {
+	Left   int32 `json:"left"`
+	Top    int32 `json:"top"`
+	Right  int32 `json:"right"`
+	Bottom int32 `json:"bottom"`
+	Width  int32 `json:"width"`
+	Height int32 `json:"height"`
+}
+
+// GeoRefStatusResponse is the response for georeferencing status
+type GeoRefStatusResponse struct {
+	Georeferenced bool                 `json:"georeferenced"`
+	Bounds        *ChartBoundsResponse `json:"bounds,omitempty"`
+}
+
+// GetGeoRefStatus returns georeferencing status for a chart
+// @Summary Get chart georeferencing status
+// @Description Returns whether a chart is georeferenced and its pixel bounds
+// @Tags georef
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code"
+// @Param filename path string true "Chart filename (e.g., KJFK225)"
+// @Success 200 {object} GeoRefStatusResponse
+// @Router /api/v1/charts/{icao}/geo/status/{filename} [get]
+func (h *Handler) GetGeoRefStatus(c *gin.Context) {
+	icao := c.Param("icao")
+	filename := c.Param("filename")
+
+	chart := h.catalog.GetChart(filename)
+	if chart == nil || chart.ICAO != icao {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	if chart.TCLPath == "" {
+		c.JSON(http.StatusOK, GeoRefStatusResponse{
+			Georeferenced: false,
+		})
+		return
+	}
+
+	status, err := h.geoClient.GetStatus(chart.TCLPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	var bounds *ChartBoundsResponse
+	if status.Georeferenced {
+		bounds = &ChartBoundsResponse{
+			Left:   status.Bounds.Left,
+			Top:    status.Bounds.Top,
+			Right:  status.Bounds.Right,
+			Bottom: status.Bounds.Bottom,
+			Width:  status.Bounds.Width,
+			Height: status.Bounds.Height,
+		}
+	}
+
+	c.JSON(http.StatusOK, GeoRefStatusResponse{
+		Georeferenced: status.Georeferenced,
+		Bounds:        bounds,
+	})
+}
+
+// CoordToPixel converts geographic coordinates to pixel coordinates
+// @Summary Convert coordinates to pixel
+// @Description Converts geographic coordinates (lat, lon) to chart pixel coordinates (x, y)
+// @Tags georef
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code"
+// @Param filename path string true "Chart filename"
+// @Param request body CoordToPixelRequest true "Geographic coordinates"
+// @Success 200 {object} CoordToPixelResponse
+// @Router /api/v1/charts/{icao}/geo/coord2pixel/{filename} [post]
+func (h *Handler) CoordToPixel(c *gin.Context) {
+	icao := c.Param("icao")
+	filename := c.Param("filename")
+
+	chart := h.catalog.GetChart(filename)
+	if chart == nil || chart.ICAO != icao {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	if chart.TCLPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "TCL file not found"})
+		return
+	}
+
+	var req CoordToPixelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	result, err := h.geoClient.CoordToPixel(chart.TCLPath, req.Latitude, req.Longitude)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, CoordToPixelResponse{
+		X:     result.X,
+		Y:     result.Y,
+		Error: result.Error,
+	})
+}
+
+// PixelToCoord converts pixel coordinates to geographic coordinates
+// @Summary Convert pixel to coordinates
+// @Description Converts chart pixel coordinates (x, y) to geographic coordinates (lat, lon)
+// @Tags georef
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code"
+// @Param filename path string true "Chart filename"
+// @Param request body PixelToCoordRequest true "Pixel coordinates"
+// @Success 200 {object} PixelToCoordResponse
+// @Router /api/v1/charts/{icao}/geo/pixel2coord/{filename} [post]
+func (h *Handler) PixelToCoord(c *gin.Context) {
+	icao := c.Param("icao")
+	filename := c.Param("filename")
+
+	chart := h.catalog.GetChart(filename)
+	if chart == nil || chart.ICAO != icao {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	if chart.TCLPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "TCL file not found"})
+		return
+	}
+
+	var req PixelToCoordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	result, err := h.geoClient.PixelToCoord(chart.TCLPath, req.X, req.Y)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, PixelToCoordResponse{
+		Latitude:  result.Latitude,
+		Longitude: result.Longitude,
+		Error:     result.Error,
+	})
+}
+
+// BatchCoordToPixel batch converts coordinates to pixels
+// @Summary Batch convert coordinates to pixels
+// @Description Converts multiple geographic coordinates to pixel coordinates
+// @Tags georef
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code"
+// @Param filename path string true "Chart filename"
+// @Param request body BatchCoordToPixelRequest true "Geographic coordinates"
+// @Success 200 {object} BatchCoordToPixelResponse
+// @Router /api/v1/charts/{icao}/geo/batch-coord2pixel/{filename} [post]
+func (h *Handler) BatchCoordToPixel(c *gin.Context) {
+	icao := c.Param("icao")
+	filename := c.Param("filename")
+
+	chart := h.catalog.GetChart(filename)
+	if chart == nil || chart.ICAO != icao {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	if chart.TCLPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "TCL file not found"})
+		return
+	}
+
+	var req BatchCoordToPixelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	coords := make([]georef.CoordRequest, len(req.Points))
+	for i, p := range req.Points {
+		coords[i] = georef.CoordRequest{Latitude: p.Latitude, Longitude: p.Longitude}
+	}
+
+	results, err := h.geoClient.BatchCoordToPixel(chart.TCLPath, coords)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	points := make([]CoordToPixelResponse, len(results))
+	for i, r := range results {
+		points[i] = CoordToPixelResponse{X: r.X, Y: r.Y, Error: r.Error}
+	}
+
+	c.JSON(http.StatusOK, BatchCoordToPixelResponse{Points: points})
+}
+
+// BatchPixelToCoord batch converts pixels to coordinates
+// @Summary Batch convert pixels to coordinates
+// @Description Converts multiple pixel coordinates to geographic coordinates
+// @Tags georef
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code"
+// @Param filename path string true "Chart filename"
+// @Param request body BatchPixelToCoordRequest true "Pixel coordinates"
+// @Success 200 {object} BatchPixelToCoordResponse
+// @Router /api/v1/charts/{icao}/geo/batch-pixel2coord/{filename} [post]
+func (h *Handler) BatchPixelToCoord(c *gin.Context) {
+	icao := c.Param("icao")
+	filename := c.Param("filename")
+
+	chart := h.catalog.GetChart(filename)
+	if chart == nil || chart.ICAO != icao {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	if chart.TCLPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "TCL file not found"})
+		return
+	}
+
+	var req BatchPixelToCoordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		return
+	}
+
+	pixels := make([]georef.PixelRequest, len(req.Points))
+	for i, p := range req.Points {
+		pixels[i] = georef.PixelRequest{X: p.X, Y: p.Y}
+	}
+
+	results, err := h.geoClient.BatchPixelToCoord(chart.TCLPath, pixels)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	points := make([]PixelToCoordResponse, len(results))
+	for i, r := range results {
+		points[i] = PixelToCoordResponse{Latitude: r.Latitude, Longitude: r.Longitude, Error: r.Error}
+	}
+
+	c.JSON(http.StatusOK, BatchPixelToCoordResponse{Points: points})
 }

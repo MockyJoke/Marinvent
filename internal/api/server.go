@@ -99,6 +99,13 @@ func registerRoutes(r *gin.Engine, h *Handler) {
 		api.GET("/charts/:icao/export/:filename", h.GetChartPDF)
 		api.GET("/chart-types", h.GetChartTypes)
 		api.GET("/airports/:icao", h.GetAirport)
+
+		// Georeferencing endpoints
+		api.GET("/charts/:icao/geo/status/:filename", h.GetGeoRefStatus)
+		api.POST("/charts/:icao/geo/coord2pixel/:filename", h.CoordToPixel)
+		api.POST("/charts/:icao/geo/pixel2coord/:filename", h.PixelToCoord)
+		api.POST("/charts/:icao/geo/batch-coord2pixel/:filename", h.BatchCoordToPixel)
+		api.POST("/charts/:icao/geo/batch-pixel2coord/:filename", h.BatchPixelToCoord)
 	}
 }
 

@@ -60,12 +60,18 @@ jobs:
         run: |
           cl.exe /EHsc /MD tcl2emf.cpp /Fe:tcl2emf.exe gdi32.lib user32.lib winspool.lib
 
+      # Build georef_tool (Windows only) - 32-bit build
+      - name: Build georef_tool (Windows)
+        shell: cmd
+        run: |
+          cl.exe /nologo /O2 /DNDEBUG /MD georef_tool.cpp /Fe:georef_tool.exe /link user32.lib gdi32.lib advapi32.lib winspool.lib
+
       # Create platform-specific artifact package
       - name: Package Artifacts
         shell: bash
         run: |
           mkdir -p build-artifacts
-          cp marinvent-server.exe marinvent-cli.exe tcl2emf.exe pdf_fixup_threshold.py jdmtool/* build-artifacts/
+          cp marinvent-server.exe marinvent-cli.exe tcl2emf.exe georef_tool.exe pdf_fixup_threshold.py jdmtool/* build-artifacts/
           cd build-artifacts
           7z a -tzip ../marinvent-windows-${{ matrix.goarch }}.zip *
 
