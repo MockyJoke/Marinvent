@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"marinvent/internal/charts"
+	"marinvent/internal/mrvtcl"
 
 	"github.com/gin-gonic/gin"
 )
@@ -296,6 +297,61 @@ func logTimings(timings map[string]time.Duration, filename string) {
 }
 
 // GetHealth returns health check
+// ChartDataResponse is the API response for getting chart data
+type ChartDataResponse struct {
+	Filename string               `json:"filename"`
+	ICAO     string               `json:"icao"`
+	Width    int32                `json:"width"`
+	Height   int32                `json:"height"`
+	HasTCL   bool                 `json:"has_tcl"`
+	GeoRef   *mrvtcl.GeoRefStatus `json:"georef,omitempty"`
+}
+
+// GetChartData returns data for a single chart
+// @Summary Get chart data
+// @Description Returns chart data including dimensions and georeferencing status for a specific chart
+// @Tags charts
+// @Accept json
+// @Produce json
+// @Param icao path string true "ICAO airport code"
+// @Param filename path string true "Chart filename (e.g., KJFK225)"
+// @Success 200 {object} ChartDataResponse
+// @Router /api/v1/charts/{icao}/data/{filename} [get]
+func (h *Handler) GetChartData(c *gin.Context) {
+	icao := c.Param("icao")
+	filename := c.Param("filename")
+
+	chart := h.catalog.GetChart(filename)
+	if chart == nil || chart.ICAO != icao {
+		c.JSON(http.StatusNotFound, gin.H{"error": "chart not found"})
+		return
+	}
+
+	response := ChartDataResponse{
+		Filename: chart.Filename,
+		ICAO:     chart.ICAO,
+		Width:    0,
+		Height:   0,
+		HasTCL:   chart.TCLPath != "",
+	}
+
+	if chart.TCLPath != "" && mrvtcl.IsInitialized() {
+		tclChart, err := mrvtcl.OpenChart(chart.TCLPath, 1)
+		if err == nil {
+			defer tclChart.Close()
+			response.Width = tclChart.Width()
+			response.Height = tclChart.Height()
+
+			status, err := tclChart.GetGeoRefStatus()
+			if err == nil {
+				response.GeoRef = status
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 // @Summary Health check
 // @Description Returns API health status and version
 // @Tags health
