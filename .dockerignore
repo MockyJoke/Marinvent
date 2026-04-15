@@ -1,0 +1,12 @@
+.git
+.idea
+.vscode
+TCLs
+win/data
+*.pdf
+*.emf
+*.obj
+debug.bat
+__pycache__
+**/__pycache__
+/.copilot

@@ -22,6 +22,7 @@ import (
 
 	"marinvent/internal/charts"
 	"marinvent/internal/dbf"
+	"marinvent/internal/runtimepaths"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -129,10 +130,10 @@ func LoadConfigFromEnv() ServerConfig {
 	return ServerConfig{
 		Host:         getEnv("HOST", "0.0.0.0"),
 		Port:         getEnv("PORT", "8080"),
-		ChartsDBF:    getEnv("CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf"),
-		VFRChartsDBF: getEnv("VFR_CHARTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\vfrchrts.dbf"),
-		TypesDBF:     getEnv("TYPES_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf"),
-		AirportsDBF:  getEnv("AIRPORTS_DBF", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\Airports.dbf"),
+		ChartsDBF:    getEnv("CHARTS_DBF", runtimepaths.DefaultChartsDBF()),
+		VFRChartsDBF: getEnv("VFR_CHARTS_DBF", runtimepaths.DefaultVFRChartsDBF()),
+		TypesDBF:     getEnv("TYPES_DBF", runtimepaths.DefaultTypesDBF()),
+		AirportsDBF:  getEnv("AIRPORTS_DBF", runtimepaths.DefaultAirportsDBF()),
 		TCLDir:       getEnv("TCL_DIR", "TCLs"),
 	}
 }

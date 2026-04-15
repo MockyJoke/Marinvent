@@ -10,17 +10,14 @@ import (
 	"marinvent/internal/charts"
 	"marinvent/internal/dbf"
 	"marinvent/internal/export"
-)
-
-var (
-	JeppDataPath = `C:\ProgramData\Jeppesen\Common\TerminalCharts`
+	"marinvent/internal/runtimepaths"
 )
 
 func main() {
-	chartsPath := flag.String("charts", filepath.Join(JeppDataPath, "charts.dbf"), "Path to charts.dbf")
-	vfrChartsPath := flag.String("vfrcharts", filepath.Join(JeppDataPath, "vfrchrts.dbf"), "Path to vfrchrts.dbf")
-	ctypesPath := flag.String("types", filepath.Join(JeppDataPath, "ctypes.dbf"), "Path to ctypes.dbf")
-	airportsPath := flag.String("airports", filepath.Join(JeppDataPath, "Airports.dbf"), "Path to Airports.dbf")
+	chartsPath := flag.String("charts", runtimepaths.DefaultChartsDBF(), "Path to charts.dbf")
+	vfrChartsPath := flag.String("vfrcharts", runtimepaths.DefaultVFRChartsDBF(), "Path to vfrchrts.dbf")
+	ctypesPath := flag.String("types", runtimepaths.DefaultTypesDBF(), "Path to ctypes.dbf")
+	airportsPath := flag.String("airports", runtimepaths.DefaultAirportsDBF(), "Path to Airports.dbf")
 	tclDir := flag.String("tcls", "TCLs", "Directory containing TCL files")
 	search := flag.String("search", "", "Search query (matches ICAO, filename, proc ID)")
 	icao := flag.String("icao", "", "Filter by ICAO code")

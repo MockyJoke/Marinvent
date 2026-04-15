@@ -1,6 +1,7 @@
 package export
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"marinvent/internal/runtimepaths"
 )
 
 type Exporter struct {
@@ -20,7 +23,7 @@ type Exporter struct {
 func NewExporter(tclDir string) *Exporter {
 	return &Exporter{
 		tclDir:      tclDir,
-		emfTool:     "tcl2emf.exe",
+		emfTool:     runtimepaths.DefaultToolPath("tcl2emf.exe"),
 		postProcess: "pdf_fixup_threshold.py",
 	}
 }
@@ -42,8 +45,10 @@ func (e *Exporter) ExportToEMF(tclPath, emfPath string) error {
 		return fmt.Errorf("TCL file not found: %s", tclPath)
 	}
 
-	cmd := exec.Command(e.getToolPath(), tclPath, emfPath)
-	cmd.Dir = "."
+	cmd, err := e.newToolCommand(tclPath, emfPath)
+	if err != nil {
+		return err
+	}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -76,12 +81,12 @@ func (e *Exporter) ExportToPDFBytes(tclPath string, postProcess bool) ([]byte, e
 	t = tick("mkdir", t)
 
 	pdfPath := filepath.Join(tempDir, "output.pdf")
-	toolPath := e.getToolPath()
-	workDir, _ := filepath.Abs(filepath.Dir(toolPath))
 
 	// 1. Execute the tool
-	cmd := exec.Command(toolPath, tclPath, pdfPath)
-	cmd.Dir = workDir
+	cmd, err := e.newToolCommand(tclPath, pdfPath)
+	if err != nil {
+		return nil, err
+	}
 	t = tick("setup", t)
 
 	output, err := cmd.CombinedOutput()
@@ -89,6 +94,11 @@ func (e *Exporter) ExportToPDFBytes(tclPath string, postProcess bool) ([]byte, e
 		return nil, fmt.Errorf("tcl2emf failed: %w, output: %s", err, string(output))
 	}
 	t = tick("tcl2emf", t)
+
+	if err := normalizePDFOutput(pdfPath); err != nil {
+		return nil, err
+	}
+	t = tick("normalize", t)
 
 	// 2. Poll for a valid, unlocked, and FINALIZED PDF
 	var pdfData []byte
@@ -178,7 +188,12 @@ func (e *Exporter) runPostProcess(pdfPath string) error {
 		return fmt.Errorf("post-process script not found: %s", ppPath)
 	}
 
-	cmd := exec.Command("python", ppPath, pdfPath)
+	pythonCmd, err := resolvePythonCommand()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command(pythonCmd, ppPath, pdfPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -194,12 +209,18 @@ func (e *Exporter) ExportToPDF(tclPath, pdfPath string) error {
 		pdfPath = pdfPath + ".pdf"
 	}
 
-	cmd := exec.Command(e.getToolPath(), tclPath, pdfPath)
-	cmd.Dir = "."
+	cmd, err := e.newToolCommand(tclPath, pdfPath)
+	if err != nil {
+		return err
+	}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("export failed: %w\nOutput: %s", err, string(output))
+	}
+
+	if err := normalizePDFOutput(pdfPath); err != nil {
+		return err
 	}
 
 	return nil
@@ -232,4 +253,102 @@ func (e *Exporter) ExportAll(outputDir string) error {
 	}
 
 	return nil
+}
+
+func (e *Exporter) newToolCommand(inputPath, outputPath string) (*exec.Cmd, error) {
+	toolPath := e.getToolPath()
+	runtimeInputPath, err := runtimepaths.RuntimeFilePath(inputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve input path: %w", err)
+	}
+
+	runtimeOutputPath, err := runtimepaths.RuntimeFilePath(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve output path: %w", err)
+	}
+
+	cmd, err := runtimepaths.PrepareCommand(toolPath, runtimeInputPath, runtimeOutputPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to launch renderer: %w", err)
+	}
+
+	return cmd, nil
+}
+
+func resolvePythonCommand() (string, error) {
+	if pythonCmd, err := exec.LookPath("python"); err == nil {
+		return pythonCmd, nil
+	}
+	if pythonCmd, err := exec.LookPath("python3"); err == nil {
+		return pythonCmd, nil
+	}
+	return "", fmt.Errorf("python interpreter not found")
+}
+
+func normalizePDFOutput(outputPath string) error {
+	format, err := detectOutputFormat(outputPath)
+	if err != nil {
+		return err
+	}
+
+	if format != "postscript" {
+		return nil
+	}
+
+	return convertPostScriptToPDF(outputPath)
+}
+
+func detectOutputFormat(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to inspect renderer output: %w", err)
+	}
+
+	switch {
+	case bytes.HasPrefix(data, []byte("%PDF")):
+		return "pdf", nil
+	case bytes.HasPrefix(data, []byte("%!PS")):
+		return "postscript", nil
+	default:
+		return "unknown", nil
+	}
+}
+
+func convertPostScriptToPDF(outputPath string) error {
+	tempPath := outputPath + ".converted.pdf"
+	defer os.Remove(tempPath)
+
+	switch {
+	case commandExists("ps2pdf"):
+		cmd := exec.Command("ps2pdf", outputPath, tempPath)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("ps2pdf failed: %w, output: %s", err, string(output))
+		}
+	case commandExists("gs"):
+		cmd := exec.Command(
+			"gs",
+			"-q",
+			"-dNOPAUSE",
+			"-dBATCH",
+			"-sDEVICE=pdfwrite",
+			"-sOutputFile="+tempPath,
+			outputPath,
+		)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("ghostscript failed: %w, output: %s", err, string(output))
+		}
+	default:
+		return fmt.Errorf("renderer produced PostScript, but neither ps2pdf nor gs is available")
+	}
+
+	if err := os.Rename(tempPath, outputPath); err != nil {
+		return fmt.Errorf("failed to replace PostScript output with PDF: %w", err)
+	}
+
+	return nil
+}
+
+func commandExists(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }

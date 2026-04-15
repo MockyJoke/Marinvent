@@ -46,3 +46,5 @@ debug.bat
 *.pdf
 *.bak
 **/__pycache__
+
+data

@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"marinvent/internal/runtimepaths"
 )
 
 type GeoRefStatus struct {
@@ -44,7 +45,7 @@ type Client struct {
 }
 
 func NewClient(tclDir string) *Client {
-	toolPath := "georef_tool.exe"
+	toolPath := runtimepaths.DefaultToolPath("georef_tool.exe")
 	if !filepath.IsAbs(toolPath) {
 		absPath, err := filepath.Abs(toolPath)
 		if err == nil {
@@ -59,29 +60,33 @@ func NewClient(tclDir string) *Client {
 }
 
 func (c *Client) getToolPath() string {
-	fmt.Println(c.toolPath)
 	return c.toolPath
 }
 
 func (c *Client) runTool(args ...string) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fmt.Println(args)
-	cmd := exec.Command(c.getToolPath(), args...)
 
-	output, err := cmd.Output()
+	cmd, err := runtimepaths.PrepareCommand(c.getToolPath(), args...)
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("tool failed: %s", string(exitErr.Stderr))
-		}
 		return nil, err
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("tool failed: %w, output: %s", err, string(output))
 	}
 
 	return output, nil
 }
 
 func (c *Client) GetStatus(tclPath string) (*GeoRefStatus, error) {
-	output, err := c.runTool("status", tclPath)
+	runtimeTCLPath, err := runtimepaths.RuntimeFilePath(tclPath)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := c.runTool("status", runtimeTCLPath)
 	if err != nil {
 		return nil, err
 	}
@@ -95,9 +100,14 @@ func (c *Client) GetStatus(tclPath string) (*GeoRefStatus, error) {
 }
 
 func (c *Client) CoordToPixel(tclPath string, lat, lon float64) (*PixelCoord, error) {
+	runtimeTCLPath, err := runtimepaths.RuntimeFilePath(tclPath)
+	if err != nil {
+		return nil, err
+	}
+
 	args := []string{
 		"coord2pixel",
-		tclPath,
+		runtimeTCLPath,
 		fmt.Sprintf("%.10f", lat),
 		fmt.Sprintf("%.10f", lon),
 	}
@@ -116,9 +126,14 @@ func (c *Client) CoordToPixel(tclPath string, lat, lon float64) (*PixelCoord, er
 }
 
 func (c *Client) PixelToCoord(tclPath string, x, y int) (*GeoCoord, error) {
+	runtimeTCLPath, err := runtimepaths.RuntimeFilePath(tclPath)
+	if err != nil {
+		return nil, err
+	}
+
 	args := []string{
 		"pixel2coord",
-		tclPath,
+		runtimeTCLPath,
 		fmt.Sprintf("%d", x),
 		fmt.Sprintf("%d", y),
 	}

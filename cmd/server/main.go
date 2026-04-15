@@ -6,15 +6,16 @@ import (
 	"os"
 
 	"marinvent/internal/api"
+	"marinvent/internal/runtimepaths"
 )
 
 func main() {
 	port := flag.String("port", "8080", "API server port")
 	host := flag.String("host", "0.0.0.0", "API server host")
-	chartsDBF := flag.String("charts", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\charts.dbf", "Path to charts.dbf")
-	vfrChartsDBF := flag.String("vfrcharts", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\vfrchrts.dbf", "Path to vfrchrts.dbf")
-	typesDBF := flag.String("types", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\ctypes.dbf", "Path to ctypes.dbf")
-	airportsDBF := flag.String("airports", "C:\\ProgramData\\Jeppesen\\Common\\TerminalCharts\\Airports.dbf", "Path to Airports.dbf")
+	chartsDBF := flag.String("charts", runtimepaths.DefaultChartsDBF(), "Path to charts.dbf")
+	vfrChartsDBF := flag.String("vfrcharts", runtimepaths.DefaultVFRChartsDBF(), "Path to vfrchrts.dbf")
+	typesDBF := flag.String("types", runtimepaths.DefaultTypesDBF(), "Path to ctypes.dbf")
+	airportsDBF := flag.String("airports", runtimepaths.DefaultAirportsDBF(), "Path to Airports.dbf")
 	tclDir := flag.String("tcls", "TCLs", "Directory containing TCL files")
 	flag.Parse()
 

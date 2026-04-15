@@ -144,6 +144,11 @@ static void UnloadJeppesenFonts(void)
 
 static const char* FindPDFPrinter(void)
 {
+    const char *configuredPrinter = getenv("MARINVENT_PDF_PRINTER");
+    if (configuredPrinter && configuredPrinter[0]) {
+        return configuredPrinter;
+    }
+
     DWORD cbNeeded = 0;
     DWORD cReturned = 0;
 
@@ -162,18 +167,14 @@ static const char* FindPDFPrinter(void)
 
     for (DWORD i = 0; i < cReturned; i++) {
         if (pPrinters[i].pPrinterName) {
-            if (strcmp(pPrinters[i].pPrinterName, "Microsoft Print to PDF") == 0) {
+            const char *name = pPrinters[i].pPrinterName;
+            if (_stricmp(name, "Microsoft Print to PDF") == 0 ||
+                _stricmp(name, "PDF") == 0 ||
+                strstr(name, "Print to PDF") != NULL ||
+                strstr(name, "PDF") != NULL ||
+                strstr(name, "pdf") != NULL) {
                 strncpy(printerName, pPrinters[i].pPrinterName, 255);
-                free(pPrinters);
-                return printerName;
-            }
-        }
-    }
-
-    for (DWORD i = 0; i < cReturned; i++) {
-        if (pPrinters[i].pPrinterName) {
-            if (strstr(pPrinters[i].pPrinterName, "Print to PDF")) {
-                strncpy(printerName, pPrinters[i].pPrinterName, 255);
+                printerName[255] = '\0';
                 free(pPrinters);
                 return printerName;
             }
@@ -196,22 +197,26 @@ static HDC CreatePDFPrinterDC(int chartWidth, int chartHeight)
 
     HANDLE hPrinter;
     if (!OpenPrinterA((LPSTR)printerName, &hPrinter, NULL)) {
+        fprintf(stderr, "OpenPrinter failed: %lu\n", GetLastError());
         return NULL;
     }
 
     int devmodeSize = DocumentPropertiesA(NULL, hPrinter, (LPSTR)printerName, NULL, NULL, 0);
     if (devmodeSize < 1) {
+        fprintf(stderr, "DocumentProperties size query failed: %d\n", devmodeSize);
         ClosePrinter(hPrinter);
         return NULL;
     }
 
     DEVMODEA *pDevmode = (DEVMODEA *)calloc(1, devmodeSize);
     if (!pDevmode) {
+        fprintf(stderr, "calloc for DEVMODE failed\n");
         ClosePrinter(hPrinter);
         return NULL;
     }
 
     if (DocumentPropertiesA(NULL, hPrinter, (LPSTR)printerName, pDevmode, NULL, DM_OUT_BUFFER) != IDOK) {
+        fprintf(stderr, "DocumentProperties output buffer failed\n");
         free(pDevmode);
         ClosePrinter(hPrinter);
         return NULL;
@@ -236,7 +241,13 @@ static HDC CreatePDFPrinterDC(int chartWidth, int chartHeight)
         pDevmode->dmOrientation = DMORIENT_LANDSCAPE;
     }
 
-    HDC hdc = CreateDCA(NULL, printerName, NULL, pDevmode);;
+    HDC hdc = CreateDCA(NULL, printerName, NULL, pDevmode);
+    if (!hdc) {
+        fprintf(stderr, "CreateDCA failed: %lu\n", GetLastError());
+    }
+    free(pDevmode);
+    ClosePrinter(hPrinter);
+    return hdc;
 }
 
 static int InitTCLLib(void)
@@ -350,11 +361,22 @@ static int ExportToPDF(const char *tclFile, const char *pdfFile, int pictIndex)
         return -1;
     }
 
+    double scaleX = (double)pageWidth / (double)width;
+    double scaleY = (double)pageHeight / (double)height;
+    double scale = (scaleX < scaleY) ? scaleX : scaleY;
+
+    int viewportWidth = (int)((double)width * scale + 0.5);
+    int viewportHeight = (int)((double)height * scale + 0.5);
+    int viewportX = (pageWidth - viewportWidth) / 2;
+    int viewportY = (pageHeight - viewportHeight) / 2;
+
+    printf("Viewport: %d x %d @ (%d,%d)\n", viewportWidth, viewportHeight, viewportX, viewportY);
+
     SetMapMode(hdcPrinter, MM_ANISOTROPIC);
     SetWindowOrgEx(hdcPrinter, pictRect.left, pictRect.top, NULL);
     SetWindowExtEx(hdcPrinter, width, height, NULL);
-    SetViewportOrgEx(hdcPrinter, 0, 0, NULL);
-    SetViewportExtEx(hdcPrinter, pageWidth, pageHeight, NULL);
+    SetViewportOrgEx(hdcPrinter, viewportX, viewportY, NULL);
+    SetViewportExtEx(hdcPrinter, viewportWidth, viewportHeight, NULL);
 
     typedef int (__cdecl *MF_BeginPainting_t)(HDC);
     typedef int (__cdecl *TCL_Display_t)(void*, HDC, float, float, RECT*, POINT*, unsigned short);
