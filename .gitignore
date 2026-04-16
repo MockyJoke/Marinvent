@@ -2,9 +2,6 @@
 *.exe
 *.obj
 
-# Dependencies (DLLs)
-*.dll
-
 # Jeppesen data files
 *.tfl
 *.tls
